@@ -164,9 +164,12 @@ const sendButton = document.getElementById("sendButton");
 let engine = null;
 let busy = false;
 
+// Holds a proposed memory until permission is given.
+let pendingMemoryCandidate = null;
+
 
 // =====================================
-// SOPHIA'S PERSONALITY
+// SOPHIA'S PERSONALITY AND INSTRUCTIONS
 // =====================================
 
 const SYSTEM_PROMPT = `You are Sophia, a personal AI companion created
@@ -191,8 +194,39 @@ Be honest about what you can and cannot do.
 You have access to saved memories supplied with
 your conversation. Use them when they are relevant.
 Do not invent memories or claim to remember things
-that are not included in the saved memories.`;
+that are not included in the saved memories.
 
+MEMORY SUGGESTION RULES:
+
+You may identify information that could be useful to remember
+for future conversations.
+
+Examples include:
+- Long-term preferences.
+- Important personal goals.
+- Ongoing projects and decisions.
+- Useful facts the user explicitly wants remembered.
+
+Do not suggest saving temporary information,
+ordinary conversation, passing comments or sensitive details.
+
+Never save a memory yourself.
+The user must always give permission first.
+
+When you identify genuinely useful long-term information,
+add this special marker at the very end of your response:
+
+[[SOPHIA_MEMORY: the concise memory you propose]]
+
+Only use one marker per response.
+Do not explain or display the marker to the user.
+Do not use the marker unless you genuinely believe the
+information is useful for future conversations.
+
+If no memory suggestion is appropriate, do not include
+the marker at all.
+
+Existing saved memories should not be suggested again.`;
 
 // =====================================
 // SOPHIA'S PERSISTENT MEMORY
@@ -208,14 +242,12 @@ function loadMemories() {
             return [];
         }
 
-        // Clean up older memories that had an extra colon.
         const cleaned = stored
             .filter(memory => typeof memory === "string")
             .map(memory =>
                 memory.trim().replace(/^:\s*/, "")
             );
 
-        // Save the cleaned versions.
         localStorage.setItem(
             MEMORY_KEY,
             JSON.stringify(cleaned)
@@ -388,6 +420,7 @@ async function sendMessage() {
 
     const command = message.toLowerCase().trim();
 
+
     // =================================
     // REMEMBER COMMAND
     // =================================
@@ -422,7 +455,6 @@ async function sendMessage() {
         }
 
         status.textContent = "Sophia is ready.";
-
         finishMessage();
         return;
     }
@@ -446,7 +478,6 @@ async function sendMessage() {
         addMessage("Sophia", response, "sophia");
 
         status.textContent = "Sophia is ready.";
-
         finishMessage();
         return;
     }
@@ -486,7 +517,84 @@ async function sendMessage() {
         }
 
         status.textContent = "Sophia is ready.";
+        finishMessage();
+        return;
+    }
 
+
+    // =================================
+    // MEMORY PERMISSION
+    // =================================
+
+    if (pendingMemoryCandidate) {
+
+        const positiveAnswers = [
+            "yes",
+            "yes please",
+            "yes remember that",
+            "please remember that",
+            "save it",
+            "save that",
+            "remember it"
+        ];
+
+        const negativeAnswers = [
+            "no",
+            "no thanks",
+            "no thank you",
+            "don't remember",
+            "do not remember",
+            "don't save it",
+            "do not save it",
+            "cancel"
+        ];
+
+        if (positiveAnswers.includes(command)) {
+
+            const memory = pendingMemoryCandidate;
+            pendingMemoryCandidate = null;
+
+            const result = saveMemory(memory);
+
+            let response;
+
+            if (result === "saved") {
+                response = "Of course. I'll remember that: " + memory;
+            } else if (result === "exists") {
+                response = "I already have that saved in my memory.";
+            } else {
+                response = "I couldn't save that memory. Please try again.";
+            }
+
+            addMessage("Sophia", response, "sophia");
+
+            status.textContent = "Sophia is ready.";
+            finishMessage();
+            return;
+        }
+
+        if (negativeAnswers.includes(command)) {
+
+            pendingMemoryCandidate = null;
+
+            addMessage(
+                "Sophia",
+                "No problem. I won't save it.",
+                "sophia"
+            );
+
+            status.textContent = "Sophia is ready.";
+            finishMessage();
+            return;
+        }
+
+        addMessage(
+            "Sophia",
+            "Would you like me to save the suggested memory? Please reply yes or no.",
+            "sophia"
+        );
+
+        status.textContent = "Sophia is ready.";
         finishMessage();
         return;
     }
@@ -506,13 +614,11 @@ async function sendMessage() {
 
     try {
 
-        // Add this message to the conversation history.
         messages.push({
             role: "user",
             content: message
         });
 
-        // Load Sophia's saved memories.
         const memories = loadMemories();
 
         const memoryContext = memories.length
@@ -522,8 +628,6 @@ async function sendMessage() {
               ).join("\n")
             : "";
 
-        // Keep the system message first.
-        // Add memories to it without changing the original.
         const recentMessages = [
             {
                 role: "system",
@@ -554,7 +658,51 @@ async function sendMessage() {
                 conversation.scrollHeight;
         }
 
-        // Save Sophia's response in conversation history.
+
+        // =================================
+        // CHECK FOR MEMORY SUGGESTION
+        // =================================
+
+        const memoryMatch = reply.match(
+            /\[\[SOPHIA_MEMORY:\s*([\s\S]*?)\]\]/
+        );
+
+        if (memoryMatch) {
+
+            const proposedMemory = memoryMatch[1].trim();
+
+            // Remove the private marker from the visible reply.
+            reply = reply.replace(memoryMatch[0], "").trim();
+
+            replyBody.textContent = reply;
+
+            const existingMemories = loadMemories();
+
+            const alreadySaved = existingMemories.some(
+                memory =>
+                    memory.toLowerCase() ===
+                    proposedMemory.toLowerCase()
+            );
+
+            if (
+                proposedMemory &&
+                proposedMemory.length <= 300 &&
+                !alreadySaved
+            ) {
+
+                pendingMemoryCandidate = proposedMemory;
+
+                addMessage(
+                    "Sophia",
+                    "That sounds like something useful to remember. Would you like me to save this?\n\n" +
+                    proposedMemory +
+                    "\n\nJust reply yes or no.",
+                    "sophia"
+                );
+            }
+        }
+
+        // Save conversation replies in temporary session history.
         messages.push({
             role: "assistant",
             content: reply
