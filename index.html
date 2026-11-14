@@ -45,7 +45,7 @@ h1 {
 }
 #conversation {
     min-height: 180px;
-    max-height: 350px;
+    max-height: 380px;
     overflow-y: auto;
     text-align: left;
     background: #101a2d;
@@ -55,12 +55,16 @@ h1 {
     line-height: 1.6;
 }
 .message {
-    margin-bottom: 12px;
+    margin-bottom: 15px;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
 .sophia { color: #9bbcff; }
 .keith { color: #fff; }
+.message a {
+    color: #a9c8ff;
+    overflow-wrap: anywhere;
+}
 input {
     width: 100%;
     padding: 15px;
@@ -103,7 +107,6 @@ input:disabled {
     color: #9bbcff;
 }
 #dashboard h2 { text-align: center; }
-#dashboard h3 { margin-top: 22px; }
 .dashboard-section {
     background: #1c2740;
     padding: 14px;
@@ -118,6 +121,17 @@ input:disabled {
     color: #aab7d0;
     font-size: 12px;
 }
+.research-heading {
+    color: #fff;
+    font-weight: bold;
+    margin: 12px 0 5px;
+}
+.research-sources {
+    padding-left: 22px;
+}
+.research-sources li {
+    margin-bottom: 12px;
+}
 </style>
 </head>
 
@@ -130,9 +144,7 @@ input:disabled {
         Your personal AI companion · Version 2.0
     </div>
 
-    <div id="status">
-        Sophia is waiting to wake up.
-    </div>
+    <div id="status">Sophia is waiting to wake up.</div>
 
     <div id="conversation">
         <div class="message sophia">
@@ -186,11 +198,11 @@ input:disabled {
             <h3>What we've completed</h3>
             <ul>
                 <li>Created Sophia's website.</li>
-                <li>Set up a lightweight browser-based AI model.</li>
+                <li>Set up a lightweight, browser-based AI model.</li>
                 <li>Created a persistent memory system.</li>
                 <li>Added permission before saving suggested memories.</li>
                 <li>Tested saving and recalling memories.</li>
-                <li>Connected Wikipedia research.</li>
+                <li>Added Wikipedia research and source retrieval.</li>
             </ul>
         </div>
 
@@ -198,7 +210,7 @@ input:disabled {
             <h3>What we're working towards</h3>
             <ul>
                 <li>Improving Sophia's answers and reliability.</li>
-                <li>Developing internet research abilities.</li>
+                <li>Developing research and summarising abilities.</li>
                 <li>Building voice interaction.</li>
                 <li>Exploring safe smart-home integration.</li>
             </ul>
@@ -207,7 +219,7 @@ input:disabled {
         <div class="dashboard-section">
             <h3>Sophia's saved memories</h3>
             <p class="small-note">
-                These memories are stored in this browser.
+                These are memories saved in this browser.
             </p>
             <ol id="memoryList"></ol>
         </div>
@@ -217,13 +229,12 @@ input:disabled {
             No paid AI APIs or subscriptions are required by this version.
         </p>
     </section>
-
 </div>
 
 <script type="module">
 
 // =====================================
-// CONFIGURATION
+// SOPHIA CONFIGURATION
 // =====================================
 
 const MODEL_ID = "SmolLM2-360M-Instruct-q4f32_1-MLC";
@@ -241,7 +252,7 @@ const memoryList = document.getElementById("memoryList");
 let engine = null;
 let busy = false;
 let pendingMemoryCandidate = null;
-let messages = [];
+const messages = [];
 
 // =====================================
 // SOPHIA'S PERSONALITY
@@ -253,32 +264,23 @@ PERSONALITY:
 Be warm, thoughtful, curious, patient, friendly and respectful.
 Use gentle humour occasionally.
 Give clear, natural and reasonably concise answers.
-Avoid repeating yourself.
+Avoid repetition.
 
-HONESTY AND ACCURACY:
+HONESTY:
 Never invent facts, sources, research or experiences.
 If you do not know something, say "I don't know."
-Never guess to fill gaps.
 Never present an assumption as a confirmed fact.
-Explain uncertainty clearly.
-Never pretend to have researched something when you have not.
-Separate confirmed facts from opinions.
-
-ANSWER QUALITY:
-Answer the actual question directly.
-Use simple explanations.
-Keep lists short.
-Make every answer complete.
-Never deliberately end halfway through a sentence.
+Explain uncertainty honestly.
+Do not pretend to have abilities you do not possess.
 
 CAPABILITIES:
-Only claim abilities and tools that are actually available.
-You can search Wikipedia when the research command is used.
-You cannot control smart-home devices without an appropriate integration.
-Be honest about your limitations.
+You can answer questions using your local AI model.
+You can retrieve Wikipedia research when the user uses the search command.
+Your research search currently uses Wikipedia, not the entire internet.
+You cannot control smart-home devices without an integration.
 
 MEMORY:
-Use supplied saved memories when relevant.
+Use saved memories supplied with the conversation when relevant.
 Never invent memories.
 Never claim to have saved something unless the memory system confirms it.
 
@@ -299,16 +301,10 @@ function loadMemories() {
 
         if (!Array.isArray(stored)) return [];
 
-        const cleaned = stored
+        return stored
             .filter(item => typeof item === "string")
-            .map(item => item.trim());
-
-        localStorage.setItem(
-            MEMORY_KEY,
-            JSON.stringify(cleaned)
-        );
-
-        return cleaned;
+            .map(item => item.trim())
+            .filter(Boolean);
 
     } catch (error) {
         console.error("Memory loading error:", error);
@@ -367,7 +363,7 @@ function forgetMemory(target) {
 }
 
 // =====================================
-// MEMORY SUGGESTIONS
+// AUTOMATIC MEMORY SUGGESTIONS
 // =====================================
 
 function suggestMemoryFromMessage(message) {
@@ -387,11 +383,13 @@ function suggestMemoryFromMessage(message) {
 
     if (!usefulPattern.test(text)) return null;
 
+    const candidate = text.replace(/^["']|["']$/g, "").trim();
+
     const exists = loadMemories().some(
-        item => item.toLowerCase() === text.toLowerCase()
+        item => item.toLowerCase() === candidate.toLowerCase()
     );
 
-    return exists ? null : text;
+    return exists ? null : candidate;
 }
 
 // =====================================
@@ -443,18 +441,64 @@ function addMessage(name, text, className) {
 
     div.appendChild(label);
     div.appendChild(body);
-
     conversation.appendChild(div);
+
     conversation.scrollTop = conversation.scrollHeight;
 
     return body;
 }
 
+// Research messages have clickable source links.
+// The links are created safely as DOM elements.
+
+function addResearchResult(summary, sources) {
+    const div = document.createElement("div");
+    div.className = "message sophia";
+
+    const label = document.createElement("strong");
+    label.textContent = "Sophia: ";
+    div.appendChild(label);
+
+    const heading = document.createElement("div");
+    heading.className = "research-heading";
+    heading.textContent = "Research summary";
+    div.appendChild(heading);
+
+    const summaryText = document.createElement("div");
+    summaryText.textContent = summary;
+    div.appendChild(summaryText);
+
+    const sourceHeading = document.createElement("div");
+    sourceHeading.className = "research-heading";
+    sourceHeading.textContent = "Original Wikipedia sources";
+    div.appendChild(sourceHeading);
+
+    const list = document.createElement("ol");
+    list.className = "research-sources";
+
+    sources.forEach(source => {
+        const item = document.createElement("li");
+
+        const link = document.createElement("a");
+        link.textContent = source.title;
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+
+        item.appendChild(link);
+        list.appendChild(item);
+    });
+
+    div.appendChild(list);
+    conversation.appendChild(div);
+    conversation.scrollTop = conversation.scrollHeight;
+}
+
 function finishMessage() {
     busy = false;
-    input.disabled = !engine;
-    sendButton.disabled = !engine;
-    if (engine) input.focus();
+    input.disabled = false;
+    sendButton.disabled = false;
+    input.focus();
 }
 
 // =====================================
@@ -463,7 +507,7 @@ function finishMessage() {
 
 startButton.addEventListener("click", async () => {
     startButton.disabled = true;
-    status.textContent = "Preparing Sophia's AI...";
+    status.textContent = "Preparing Sophia's lighter AI...";
 
     try {
         const webllm = await import(
@@ -476,7 +520,9 @@ startButton.addEventListener("click", async () => {
                 initProgressCallback: progress => {
                     status.textContent =
                         progress.text || "Loading Sophia...";
-                },
+                }
+            },
+            {
                 context_window_size: 2048
             }
         );
@@ -490,7 +536,6 @@ startButton.addEventListener("click", async () => {
     } catch (error) {
         console.error("Sophia startup error:", error);
 
-        engine = null;
         status.textContent =
             "Sophia couldn't start. Please check your connection or browser support.";
 
@@ -499,265 +544,131 @@ startButton.addEventListener("click", async () => {
 });
 
 // =====================================
-// MEMORY COMMANDS
-// =====================================
-
-function handleMemoryCommand(command, message) {
-    if (command.startsWith("remember:")) {
-        const memory = message.slice(9).trim();
-
-        if (!memory) {
-            addMessage("Sophia", "What would you like me to remember?", "sophia");
-        } else {
-            const result = saveMemory(memory);
-
-            const response = result === "saved"
-                ? "I'll remember that: " + memory
-                : result === "exists"
-                    ? "I already have that saved in my memory."
-                    : "I couldn't save that memory. Please try again.";
-
-            addMessage("Sophia", response, "sophia");
-        }
-
-        return true;
-    }
-
-    if (command === "memory") {
-        const memories = loadMemories();
-
-        const response = memories.length
-            ? "Here is what I remember:\n" +
-              memories.map((item, index) =>
-                  (index + 1) + ". " + item
-              ).join("\n")
-            : "I haven't saved any memories yet.";
-
-        addMessage("Sophia", response, "sophia");
-        return true;
-    }
-
-    if (command.startsWith("forget:")) {
-        const target = message.slice(7).trim();
-
-        if (!target) {
-            addMessage(
-                "Sophia",
-                "Please tell me which memory you'd like me to forget.",
-                "sophia"
-            );
-        } else {
-            const result = forgetMemory(target);
-
-            const response = result === "removed"
-                ? "I've removed that memory."
-                : result === "not_found"
-                    ? "I couldn't find that exact memory."
-                    : "I couldn't update my memory. Please try again.";
-
-            addMessage("Sophia", response, "sophia");
-        }
-
-        refreshDashboard();
-        return true;
-    }
-
-    return false;
-}
-
-// =====================================
-// MEMORY PERMISSION
-// =====================================
-
-function handleMemoryPermission(command) {
-    const positiveAnswers = [
-        "yes",
-        "yes please",
-        "yes remember that",
-        "please remember that",
-        "save it",
-        "save that",
-        "remember it"
-    ];
-
-    const negativeAnswers = [
-        "no",
-        "no thanks",
-        "no thank you",
-        "don't remember",
-        "do not remember",
-        "don't save it",
-        "do not save it",
-        "cancel"
-    ];
-
-    if (!pendingMemoryCandidate) return false;
-
-    if (positiveAnswers.includes(command)) {
-        const memory = pendingMemoryCandidate;
-        pendingMemoryCandidate = null;
-
-        const result = saveMemory(memory);
-
-        const response = result === "saved"
-            ? "Of course. I'll remember that: " + memory
-            : result === "exists"
-                ? "I already have that saved in my memory."
-                : "I couldn't save that memory. Please try again.";
-
-        addMessage("Sophia", response, "sophia");
-        refreshDashboard();
-        return true;
-    }
-
-    if (negativeAnswers.includes(command)) {
-        pendingMemoryCandidate = null;
-
-        addMessage(
-            "Sophia",
-            "No problem. I won't save it.",
-            "sophia"
-        );
-
-        return true;
-    }
-
-    pendingMemoryCandidate = null;
-    return false;
-}
-
-// =====================================
 // WIKIPEDIA RESEARCH
 // =====================================
 
 async function researchWikipedia(query) {
-    status.textContent = "Sophia is researching...";
+    status.textContent = "Sophia is searching Wikipedia...";
 
     const searchUrl =
         "https://en.wikipedia.org/w/api.php?action=query" +
-        "&list=search" +
-        "&srsearch=" + encodeURIComponent(query) +
-        "&srlimit=3" +
-        "&format=json&origin=*";
+        "&list=search&srsearch=" +
+        encodeURIComponent(query) +
+        "&srlimit=3&format=json&origin=*&formatversion=2";
 
     const searchResponse = await fetch(searchUrl);
 
     if (!searchResponse.ok) {
-        throw new Error("Wikipedia search request failed.");
+        throw new Error("Wikipedia search failed.");
     }
 
     const searchData = await searchResponse.json();
     const results = searchData.query?.search || [];
 
     if (results.length === 0) {
-        addMessage(
-            "Sophia",
-            "I couldn't find any matching Wikipedia articles.",
-            "sophia"
-        );
-        return;
+        return {
+            summary: "I couldn't find any matching Wikipedia articles.",
+            sources: []
+        };
     }
+
+    status.textContent = "Sophia is reading the articles...";
 
     const titles = results.map(item => item.title).join("|");
 
     const articleUrl =
         "https://en.wikipedia.org/w/api.php?action=query" +
-        "&prop=extracts" +
-        "&exintro=1" +
-        "&explaintext=1" +
-        "&exsentences=4" +
+        "&prop=extracts&exintro=1&explaintext=1&exsentences=5" +
         "&titles=" + encodeURIComponent(titles) +
-        "&format=json&origin=*";
+        "&format=json&origin=*&formatversion=2";
 
     const articleResponse = await fetch(articleUrl);
 
     if (!articleResponse.ok) {
-        throw new Error("Wikipedia article request failed.");
+        throw new Error("Wikipedia articles could not be retrieved.");
     }
 
     const articleData = await articleResponse.json();
-    const pages = Object.values(articleData.query?.pages || {});
+    const pages = articleData.query?.pages || [];
 
-    const sourceList = [];
-
-    results.forEach((result, index) => {
+    const sources = results.map(result => {
         const page = pages.find(
             item => item.title === result.title
         );
 
-        const extract = page?.extract
-            ? page.extract.slice(0, 500)
-            : "No article summary was available.";
-
-        const link =
-            "https://en.wikipedia.org/wiki/" +
-            encodeURIComponent(result.title.replace(/ /g, "_"));
-
-        sourceList.push(
-            (index + 1) + ". " + result.title +
-            "\n" + extract +
-            "\nSource: " + link
-        );
+        return {
+            title: result.title,
+            extract: page?.extract || "",
+            url:
+                "https://en.wikipedia.org/wiki/" +
+                encodeURIComponent(result.title.replace(/ /g, "_"))
+        };
     });
 
-    const research = sourceList.join("\n\n");
+    const usableSources = sources.filter(
+        source => source.extract.trim().length > 0
+    );
 
-    status.textContent = "Sophia is analysing her research...";
+    if (usableSources.length === 0) {
+        return {
+            summary: "I found articles, but couldn't retrieve their summaries.",
+            sources
+        };
+    }
+
+    // Give the AI the actual article information.
+    // Do not give it the source links as part of its writing task.
+
+    const researchText = usableSources.map((source, index) =>
+        "SOURCE " + (index + 1) +
+        "\nTITLE: " + source.title +
+        "\nARTICLE EXTRACT: " + source.extract
+    ).join("\n\n");
+
+    status.textContent = "Sophia is preparing her summary...";
 
     const researchMessages = [
         {
             role: "system",
-            content: SYSTEM_PROMPT +
-                "\n\nYou are now analysing retrieved research. " +
-                "Only make claims supported by the supplied sources. " +
-                "Do not add outside facts or invent details. " +
-                "Explain the information clearly and mention uncertainty."
+            content:
+                "You are Sophia, a careful research assistant. " +
+                "Write a short, useful summary of the supplied research. " +
+                "Use only facts clearly supported by the supplied extracts. " +
+                "Do not invent details or add outside knowledge. " +
+                "Write in your own words rather than copying the extracts. " +
+                "Do not begin with conversational filler such as " +
+                "'I can help with that'. Begin with the actual subject. " +
+                "If the extracts do not provide enough information, " +
+                "say what is missing. Keep the answer clear and concise."
         },
-        ...messages.slice(-4),
         {
             role: "user",
             content:
-                "Please summarise the following research in your own words. " +
-                "Explain the main points clearly. " +
-                "Do not invent information. " +
-                "Do not include unsupported claims. " +
-                "The original sources will be displayed underneath your summary.\n\n" +
-                research
+                "Research question: " + query +
+                "\n\nWrite a clear summary answering this question " +
+                "using the following article extracts:\n\n" +
+                researchText
         }
     ];
 
-    const summary = await engine.chat.completions.create({
+    const response = await engine.chat.completions.create({
         messages: researchMessages,
-        temperature: 0.3,
-        max_tokens: 220
+        temperature: 0.2,
+        max_tokens: 240
     });
 
-    const summaryText =
-        summary.choices?.[0]?.message?.content ||
-        "I retrieved the sources, but I couldn't produce a summary.";
+    const summary =
+        response.choices?.[0]?.message?.content?.trim();
 
-    addMessage(
-        "Sophia",
-        "Here is my summary:\n\n" +
-        summaryText +
-        "\n\nOriginal Wikipedia research:\n\n" +
-        research,
-        "sophia"
-    );
-
-    messages.push({
-        role: "user",
-        content: "Research: " + query
-    });
-
-    messages.push({
-        role: "assistant",
-        content: summaryText
-    });
+    return {
+        summary: summary ||
+            "I retrieved the articles, but couldn't produce a reliable summary.",
+        sources
+    };
 }
 
 // =====================================
-// PROCESS MESSAGES
+// SEND AND PROCESS MESSAGES
 // =====================================
 
 async function sendMessage() {
@@ -774,17 +685,146 @@ async function sendMessage() {
 
     const command = message.toLowerCase().trim();
 
-    if (handleMemoryCommand(command, message)) {
+    // REMEMBER COMMAND
+
+    if (command.startsWith("remember:")) {
+        const memory = message.slice(9).trim();
+
+        if (!memory) {
+            addMessage(
+                "Sophia",
+                "What would you like me to remember?",
+                "sophia"
+            );
+        } else {
+            const result = saveMemory(memory);
+
+            const response =
+                result === "saved"
+                    ? "I'll remember that: " + memory
+                    : result === "exists"
+                        ? "I already have that saved in my memory."
+                        : "I couldn't save that memory. Please try again.";
+
+            addMessage("Sophia", response, "sophia");
+            refreshDashboard();
+        }
+
         status.textContent = "Sophia is ready.";
         finishMessage();
         return;
     }
 
-    if (handleMemoryPermission(command)) {
+    // RECALL MEMORY
+
+    if (command === "memory") {
+        const memories = loadMemories();
+
+        const response = memories.length
+            ? "Here is what I remember:\n" +
+              memories.map((item, index) =>
+                  (index + 1) + ". " + item
+              ).join("\n")
+            : "I haven't saved any memories yet.";
+
+        addMessage("Sophia", response, "sophia");
         status.textContent = "Sophia is ready.";
         finishMessage();
         return;
     }
+
+    // FORGET MEMORY
+
+    if (command.startsWith("forget:")) {
+        const target = message.slice(7).trim();
+
+        if (!target) {
+            addMessage(
+                "Sophia",
+                "Please tell me which memory you'd like me to forget.",
+                "sophia"
+            );
+        } else {
+            const result = forgetMemory(target);
+
+            const response =
+                result === "removed"
+                    ? "I've removed that memory."
+                    : result === "not_found"
+                        ? "I couldn't find that exact memory."
+                        : "I couldn't update my memory. Please try again.";
+
+            addMessage("Sophia", response, "sophia");
+            refreshDashboard();
+        }
+
+        status.textContent = "Sophia is ready.";
+        finishMessage();
+        return;
+    }
+
+    // MEMORY PERMISSION
+
+    if (pendingMemoryCandidate) {
+        const positiveAnswers = [
+            "yes",
+            "yes please",
+            "yes remember that",
+            "please remember that",
+            "save it",
+            "save that",
+            "remember it"
+        ];
+
+        const negativeAnswers = [
+            "no",
+            "no thanks",
+            "no thank you",
+            "don't remember",
+            "do not remember",
+            "don't save it",
+            "do not save it",
+            "cancel"
+        ];
+
+        if (positiveAnswers.includes(command)) {
+            const memory = pendingMemoryCandidate;
+            pendingMemoryCandidate = null;
+
+            const result = saveMemory(memory);
+
+            const response =
+                result === "saved"
+                    ? "Of course. I'll remember that: " + memory
+                    : result === "exists"
+                        ? "I already have that saved in my memory."
+                        : "I couldn't save that memory. Please try again.";
+
+            addMessage("Sophia", response, "sophia");
+            refreshDashboard();
+            status.textContent = "Sophia is ready.";
+            finishMessage();
+            return;
+        }
+
+        if (negativeAnswers.includes(command)) {
+            pendingMemoryCandidate = null;
+
+            addMessage(
+                "Sophia",
+                "No problem. I won't save it.",
+                "sophia"
+            );
+
+            status.textContent = "Sophia is ready.";
+            finishMessage();
+            return;
+        }
+
+        pendingMemoryCandidate = null;
+    }
+
+    // WIKIPEDIA SEARCH COMMAND
 
     if (command.startsWith("search:")) {
         const query = message.slice(7).trim();
@@ -795,13 +835,24 @@ async function sendMessage() {
                 "What would you like me to research?",
                 "sophia"
             );
+
             status.textContent = "Sophia is ready.";
             finishMessage();
             return;
         }
 
         try {
-            await researchWikipedia(query);
+            const result = await researchWikipedia(query);
+
+            if (result.sources.length === 0) {
+                addMessage("Sophia", result.summary, "sophia");
+            } else {
+                addResearchResult(
+                    result.summary,
+                    result.sources
+                );
+            }
+
         } catch (error) {
             console.error("Research error:", error);
 
@@ -865,7 +916,9 @@ async function sendMessage() {
 
             reply += token;
             replyBody.textContent = reply;
-            conversation.scrollTop = conversation.scrollHeight;
+
+            conversation.scrollTop =
+                conversation.scrollHeight;
         }
 
         messages.push({
@@ -891,7 +944,7 @@ async function sendMessage() {
         status.textContent = "Sophia is ready.";
 
     } catch (error) {
-        console.error("AI response error:", error);
+        console.error("Chat error:", error);
 
         replyBody.textContent =
             "I'm sorry, something went wrong. Please try again.";
