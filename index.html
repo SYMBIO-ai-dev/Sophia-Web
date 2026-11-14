@@ -144,7 +144,7 @@ input:disabled {
 // SOPHIA AI CONFIGURATION
 // =====================================
 
-const MODEL_ID = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+const MODEL_ID = "SmolLM2-360M-Instruct-q4f32_1-MLC";
 const MEMORY_KEY = "sophia_saved_memories";
 
 const status = document.getElementById("status");
@@ -291,7 +291,6 @@ function suggestMemoryFromMessage(message) {
         return null;
     }
 
-    // Do not suggest saving sensitive information.
     const sensitivePattern =
         /\b(password|passcode|pin number|credit card|bank account|medical condition|diagnosis|medication|religion|political party|sexual orientation|private address|social security)\b/i;
 
@@ -299,8 +298,6 @@ function suggestMemoryFromMessage(message) {
         return null;
     }
 
-    // Recognise common expressions of lasting preferences,
-    // goals, plans, projects and learning preferences.
     const usefulPattern =
         /\b(I prefer|I like|I love|I usually|I always|I often|I want|I need|my goal is|my aim is|my plan is|my project is|I'm working on|I am working on|I'm building|I am building|I'm learning|I am learning|I'm trying to|I am trying to|please remember|keep in mind)\b/i;
 
@@ -310,7 +307,6 @@ function suggestMemoryFromMessage(message) {
 
     const candidate = text.replace(/^["']|["']$/g, "").trim();
 
-    // Avoid suggesting information Sophia already knows.
     const existingMemories = loadMemories();
 
     const alreadySaved = existingMemories.some(
@@ -365,7 +361,7 @@ function finishMessage() {
 startButton.addEventListener("click", async () => {
 
     startButton.disabled = true;
-    status.textContent = "Preparing Sophia's AI...";
+    status.textContent = "Preparing Sophia's lighter AI...";
 
     try {
 
@@ -380,6 +376,9 @@ startButton.addEventListener("click", async () => {
                     status.textContent =
                         progress.text || "Loading Sophia...";
                 }
+            },
+            {
+                context_window_size: 2048
             }
         );
 
@@ -592,8 +591,6 @@ async function sendMessage() {
             return;
         }
 
-        // A different message means the user has moved on.
-        // Cancel the old suggestion and handle the new message.
         pendingMemoryCandidate = null;
     }
 
@@ -631,13 +628,13 @@ async function sendMessage() {
                 role: "system",
                 content: SYSTEM_PROMPT + memoryContext
             },
-            ...messages.slice(-12)
+            ...messages.slice(-6)
         ];
 
         const stream = await engine.chat.completions.create({
             messages: recentMessages,
             temperature: 0.7,
-            max_tokens: 220,
+            max_tokens: 120,
             stream: true
         });
 
@@ -656,7 +653,6 @@ async function sendMessage() {
                 conversation.scrollHeight;
         }
 
-        // Save the AI reply in temporary conversation history.
         messages.push({
             role: "assistant",
             content: reply
