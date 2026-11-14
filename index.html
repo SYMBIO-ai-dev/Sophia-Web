@@ -718,6 +718,105 @@ async function sendMessage() {
         pendingMemoryCandidate = null;
     }
 
+    // WIKIPEDIA RESEARCH
+
+if (command.startsWith("search:")) {
+
+    const query = message.slice(7).trim();
+
+    if (!query) {
+        addMessage(
+            "Sophia",
+            "What would you like me to research?",
+            "sophia"
+        );
+
+        finishMessage();
+        return;
+    }
+
+    status.textContent = "Sophia is researching...";
+
+    try {
+
+        const searchResponse = await fetch(
+            "https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=" +
+            encodeURIComponent(query) +
+            "&srlimit=3&format=json&origin=*"
+        );
+
+        if (!searchResponse.ok) {
+            throw new Error("Search request failed");
+        }
+
+        const searchData = await searchResponse.json();
+        const results = searchData.query.search;
+
+        if (!results || results.length === 0) {
+
+            addMessage(
+                "Sophia",
+                "I couldn't find any matching Wikipedia articles.",
+                "sophia"
+            );
+
+        } else {
+
+            const titles = results.map(item => item.title).join("|");
+
+            const articleResponse = await fetch(
+                "https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&exsentences=4&titles=" +
+                encodeURIComponent(titles) +
+                "&format=json&origin=*"
+            );
+
+            if (!articleResponse.ok) {
+                throw new Error("Article request failed");
+            }
+
+            const articleData = await articleResponse.json();
+            const pages = Object.values(articleData.query.pages);
+
+            let research = "I found these Wikipedia sources:\n\n";
+
+            results.forEach((result, index) => {
+
+                const page = pages.find(
+                    item => item.title === result.title
+                );
+
+                const extract = page && page.extract
+                    ? page.extract.slice(0, 500)
+                    : "No article summary was available.";
+
+                const link =
+                    "https://en.wikipedia.org/wiki/" +
+                    encodeURIComponent(result.title.replace(/ /g, "_"));
+
+                research +=
+                    (index + 1) + ". " + result.title + "\n" +
+                    extract + "\n" +
+                    "Source: " + link + "\n\n";
+            });
+
+            addMessage("Sophia", research, "sophia");
+        }
+
+    } catch (error) {
+
+        console.error("Research error:", error);
+
+        addMessage(
+            "Sophia",
+            "I couldn't complete the research. Please check your internet connection and try again.",
+            "sophia"
+        );
+    }
+
+    status.textContent = "Sophia is ready.";
+    finishMessage();
+    return;
+}
     // NORMAL AI CONVERSATION
 
     const replyBody = addMessage(
