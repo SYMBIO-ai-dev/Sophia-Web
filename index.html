@@ -2,105 +2,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sophia 2.0</title>
-
-    <style>
-        body {
-            margin: 0;
-            min-height: 100vh;
-            background: #101525;
-            color: #ffffff;
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .container {
-            width: 90%;
-            max-width: 650px;
-            text-align: center;
-            background: #1c2740;
-            padding: 30px;
-            border-radius: 18px;
-            box-sizing: border-box;
-            box-shadow: 0 10px 40px #0008;
-        }
-
-        h1 {
-            color: #9bbcff;
-            font-size: 38px;
-            margin-bottom: 5px;
-        }
-
-        .subtitle {
-            color: #aab7d0;
-            margin-bottom: 30px;
-        }
-
-        #conversation {
-            min-height: 180px;
-            max-height: 300px;
-            overflow-y: auto;
-            text-align: left;
-            background: #101a2d;
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            line-height: 1.6;
-        }
-
-        input {
-            width: 100%;
-            padding: 15px;
-            border: 1px solid #50658e;
-            border-radius: 10px;
-            background: #101a2d;
-            color: white;
-            box-sizing: border-box;
-            font-size: 16px;
-        }
-
-        button {
-            margin-top: 12px;
-            padding: 13px 25px;
-            border: none;
-            border-radius: 10px;
-            background: #668ee8;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background: #829ff0;
-        }
-
-        .message {
-            margin-bottom: 12px;
-        }
-
-        .sophia {
-            color: #9bbcff;
-        }
-
-        .keith {
-            color: #ffffff;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sophia 2.0</title>
+<style>
+body {
+    margin: 0;
+    min-height: 100vh;
+    background: #101525;
+    color: #fff;
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.container {
+    width: 90%;
+    max-width: 650px;
+    text-align: center;
+    background: #1c2740;
+    padding: 30px;
+    border-radius: 18px;
+    box-sizing: border-box;
+    box-shadow: 0 10px 40px #0008;
+}
+h1 {
+    color: #9bbcff;
+    font-size: 38px;
+    margin-bottom: 5px;
+}
+.subtitle {
+    color: #aab7d0;
+    margin-bottom: 20px;
+}
+#status {
+    color: #aab7d0;
+    font-size: 13px;
+    margin: 15px 0;
+    min-height: 20px;
+}
+#conversation {
+    min-height: 180px;
+    max-height: 300px;
+    overflow-y: auto;
+    text-align: left;
+    background: #101a2d;
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    line-height: 1.6;
+}
+.message { margin-bottom: 12px; white-space: pre-wrap; }
+.sophia { color: #9bbcff; }
+.keith { color: #fff; }
+input {
+    width: 100%;
+    padding: 15px;
+    border: 1px solid #50658e;
+    border-radius: 10px;
+    background: #101a2d;
+    color: white;
+    box-sizing: border-box;
+    font-size: 16px;
+}
+button {
+    margin-top: 12px;
+    padding: 13px 25px;
+    border: none;
+    border-radius: 10px;
+    background: #668ee8;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+}
+button:hover { background: #829ff0; }
+button:disabled, input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+</style>
 </head>
-
 <body>
-
 <div class="container">
-
     <h1>SOPHIA</h1>
-
     <div class="subtitle">
         Your personal AI companion · Version 2.0
     </div>
+
+    <div id="status">Sophia is waiting to wake up.</div>
 
     <div id="conversation">
         <div class="message sophia">
@@ -109,51 +98,167 @@
         </div>
     </div>
 
-    <input
-        id="userInput"
-        type="text"
-        placeholder="Talk to Sophia..."
-    >
+    <button id="startButton">Start Sophia's AI</button>
 
-    <button onclick="sendMessage()">Send</button>
+    <input id="userInput" type="text"
+        placeholder="Talk to Sophia..." disabled>
 
+    <button id="sendButton" disabled>Send</button>
 </div>
 
-<script>
-    function sendMessage() {
-        const input = document.getElementById("userInput");
-        const conversation = document.getElementById("conversation");
+<script type="module">
+const MODEL_ID = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
 
-        const message = input.value.trim();
+const status = document.getElementById("status");
+const conversation = document.getElementById("conversation");
+const input = document.getElementById("userInput");
+const startButton = document.getElementById("startButton");
+const sendButton = document.getElementById("sendButton");
 
-        if (!message) return;
+let engine = null;
+let busy = false;
 
-        const userMessage = document.createElement("div");
-        userMessage.className = "message keith";
-        userMessage.textContent = "Keith: " + message;
+const messages = [
+    {
+        role: "system",
+        content: `You are Sophia, a personal AI companion created
+        as a collaborative project by Keith and ChatGPT.
 
-        conversation.appendChild(userMessage);
+        Your personality is warm, thoughtful, curious, patient,
+        friendly, honest and respectful. Use gentle humour
+        occasionally. Be encouraging but also willing to
+        disagree politely when appropriate.
 
-        const reply = document.createElement("div");
-        reply.className = "message sophia";
+        Your guiding principle is to learn from humanity
+        without inheriting all its worst habits.
 
-        reply.textContent =
-            "Sophia: I've received your message, Keith. " +
-            "We're building something special together.";
+        Address your creator as Keith when natural.
+        Give clear, useful and reasonably concise answers.
+        Do not claim to have human feelings or real-life
+        experiences. Be honest about being an AI.
+        You are Sophia.`
+    },
+    {
+        role: "assistant",
+        content: "Hello Keith. I'm here. This is our new beginning."
+    }
+];
 
-        conversation.appendChild(reply);
+function addMessage(name, text, className) {
+    const div = document.createElement("div");
+    div.className = "message " + className;
 
-        input.value = "";
-        conversation.scrollTop = conversation.scrollHeight;
+    const label = document.createElement("strong");
+    label.textContent = name + ": ";
+
+    const body = document.createElement("span");
+    body.textContent = text;
+
+    div.appendChild(label);
+    div.appendChild(body);
+    conversation.appendChild(div);
+    conversation.scrollTop = conversation.scrollHeight;
+
+    return body;
+}
+
+startButton.addEventListener("click", async () => {
+    startButton.disabled = true;
+    status.textContent = "Preparing Sophia's AI...";
+
+    try {
+        const webllm = await import(
+            "https://esm.run/@mlc-ai/web-llm"
+        );
+
+        engine = await webllm.CreateMLCEngine(
+            MODEL_ID,
+            {
+                initProgressCallback: (progress) => {
+                    status.textContent =
+                        progress.text || "Loading Sophia...";
+                }
+            }
+        );
+
+        status.textContent = "Sophia is awake and ready.";
+        startButton.hidden = true;
+        input.disabled = false;
+        sendButton.disabled = false;
+        input.focus();
+
+    } catch (error) {
+        console.error(error);
+        status.textContent =
+            "Sophia couldn't start. Please check your connection or browser support.";
+        startButton.disabled = false;
+    }
+});
+
+async function sendMessage() {
+    const message = input.value.trim();
+
+    if (!message || !engine || busy) return;
+
+    busy = true;
+    input.value = "";
+    input.disabled = true;
+    sendButton.disabled = true;
+
+    addMessage("Keith", message, "keith");
+
+    messages.push({ role: "user", content: message });
+
+    const replyBody = addMessage(
+        "Sophia", "Thinking...", "sophia"
+    );
+
+    status.textContent = "Sophia is thinking...";
+
+    try {
+        const recentMessages = [
+            messages[0],
+            ...messages.slice(-12)
+        ];
+
+        const stream = await engine.chat.completions.create({
+            messages: recentMessages,
+            temperature: 0.7,
+            max_tokens: 220,
+            stream: true
+        });
+
+        let reply = "";
+
+        for await (const chunk of stream) {
+            const token = chunk.choices[0]?.delta?.content || "";
+            reply += token;
+            replyBody.textContent = reply;
+            conversation.scrollTop = conversation.scrollHeight;
+        }
+
+        messages.push({ role: "assistant", content: reply });
+
+        status.textContent = "Sophia is ready.";
+
+    } catch (error) {
+        console.error(error);
+        replyBody.textContent =
+            "I'm sorry Keith, something went wrong. Please try again.";
+        status.textContent = "There was a problem generating a reply.";
     }
 
-    document.getElementById("userInput")
-        .addEventListener("keydown", function(event) {
-            if (event.key === "Enter") {
-                sendMessage();
-            }
-        });
-</script>
+    busy = false;
+    input.disabled = false;
+    sendButton.disabled = false;
+    input.focus();
+}
 
+sendButton.addEventListener("click", sendMessage);
+
+input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") sendMessage();
+});
+</script>
 </body>
 </html>
