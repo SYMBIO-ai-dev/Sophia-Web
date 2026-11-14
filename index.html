@@ -753,7 +753,7 @@ async function sendMessage() {
         const stream = await engine.chat.completions.create({
             messages: recentMessages,
             temperature: 0.7,
-            max_tokens: 160,
+            max_tokens: 220,
             stream: true
         });
 
