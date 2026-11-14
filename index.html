@@ -230,7 +230,7 @@ async function sendMessage() {
 
     messages.push({ role: "user", content: message });
         if (message.toLowerCase().startsWith("remember:")) {
-        const memory = message.slice(8).trim();
+        const memory = message.slice(9).trim();
 
         if (memory) {
             saveMemory(memory);
