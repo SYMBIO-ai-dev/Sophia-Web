@@ -799,7 +799,32 @@ if (command.startsWith("search:")) {
                     "Source: " + link + "\n\n";
             });
 
-            addMessage("Sophia", research, "sophia");
+            addMessage("const researchMessages = [
+    ...messages.slice(-4),
+    {
+        role: "user",
+        content:
+            "Using the research below, write a clear, accurate summary in your own words. " +
+            "Use only information supported by these sources. Do not invent facts. " +
+            "If the sources do not provide enough information, say so. " +
+            "Keep the source titles and links visible at the end.\n\n" +
+            research
+    }
+];
+
+const summary = await engine.chat.completions.create({
+    messages: researchMessages,
+    temperature: 0.3,
+    max_tokens: 220
+});
+
+const summaryText = summary.choices[0].message.content;
+
+addMessage(
+    "Sophia",
+    summaryText + "\n\n" + research,
+    "sophia"
+);Sophia", research, "sophia");
         }
 
     } catch (error) {
