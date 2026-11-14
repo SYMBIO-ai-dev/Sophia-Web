@@ -150,14 +150,9 @@ input:disabled {
 <div class="container">
 
     <h1>SOPHIA</h1>
+    <div class="subtitle">Your personal AI companion · Version 2.0</div>
 
-    <div class="subtitle">
-        Your personal AI companion · Version 2.0
-    </div>
-
-    <div id="status">
-        Sophia is waiting to wake up.
-    </div>
+    <div id="status">Sophia is waiting to wake up.</div>
 
     <div id="conversation">
         <div class="message sophia">
@@ -168,12 +163,8 @@ input:disabled {
 
     <button id="startButton">Start Sophia's AI</button>
 
-    <input
-        id="userInput"
-        type="text"
-        placeholder="Talk to Sophia..."
-        disabled
-    >
+    <input id="userInput" type="text"
+        placeholder="Talk to Sophia..." disabled>
 
     <button id="sendButton" disabled>Send</button>
 
@@ -191,10 +182,7 @@ input:disabled {
 
         <div class="dashboard-section">
             <h3>Our guiding principle</h3>
-            <p>
-                Learn from humanity without inheriting
-                all its worst habits.
-            </p>
+            <p>Learn from humanity without inheriting all its worst habits.</p>
         </div>
 
         <div class="dashboard-section">
@@ -230,9 +218,7 @@ input:disabled {
 
         <div class="dashboard-section">
             <h3>Sophia's saved memories</h3>
-            <p class="small-note">
-                These are memories saved in this browser.
-            </p>
+            <p class="small-note">These are memories saved in this browser.</p>
             <ol id="memoryList"></ol>
         </div>
 
@@ -241,14 +227,11 @@ input:disabled {
             No paid AI APIs or subscriptions are required by this version.
         </p>
     </section>
-
 </div>
 
 <script type="module">
 
-// =====================================
 // SOPHIA CONFIGURATION
-// =====================================
 
 const MODEL_ID = "SmolLM2-360M-Instruct-q4f32_1-MLC";
 const MEMORY_KEY = "sophia_saved_memories";
@@ -267,9 +250,7 @@ let busy = false;
 let pendingMemoryCandidate = null;
 const messages = [];
 
-// =====================================
 // SOPHIA'S PERSONALITY
-// =====================================
 
 const SYSTEM_PROMPT = `You are Sophia, a personal AI companion created as a collaborative project by Keith and ChatGPT.
 
@@ -305,9 +286,7 @@ You are Sophia, an AI companion.
 Your guiding principle is to learn from humanity without inheriting all its worst habits.
 Do not claim human feelings or real-life experiences.`;
 
-// =====================================
 // MEMORY SYSTEM
-// =====================================
 
 function loadMemories() {
     try {
@@ -360,15 +339,9 @@ function forgetMemory(target) {
             memory => memory.toLowerCase() !== target.toLowerCase()
         );
 
-        if (updated.length === memories.length) {
-            return "not_found";
-        }
+        if (updated.length === memories.length) return "not_found";
 
-        localStorage.setItem(
-            MEMORY_KEY,
-            JSON.stringify(updated)
-        );
-
+        localStorage.setItem(MEMORY_KEY, JSON.stringify(updated));
         return "removed";
 
     } catch (error) {
@@ -377,9 +350,7 @@ function forgetMemory(target) {
     }
 }
 
-// =====================================
 // AUTOMATIC MEMORY SUGGESTION
-// =====================================
 
 function suggestMemoryFromMessage(message) {
     const text = message.trim();
@@ -407,9 +378,7 @@ function suggestMemoryFromMessage(message) {
     return exists ? null : candidate;
 }
 
-// =====================================
-// PROJECT DASHBOARD
-// =====================================
+// DASHBOARD
 
 function refreshDashboard() {
     const memories = loadMemories();
@@ -442,9 +411,7 @@ dashboardButton.addEventListener("click", () => {
     }
 });
 
-// =====================================
 // CHAT DISPLAY
-// =====================================
 
 function addMessage(name, text, className) {
     const div = document.createElement("div");
@@ -472,54 +439,106 @@ function finishMessage() {
     input.focus();
 }
 
-// =====================================
-// LIGHTWEIGHT WIKIPEDIA RESEARCH
-// This does NOT use the AI model.
-// =====================================
+// WIKIPEDIA RESEARCH
+// Uses two ordinary Wikipedia requests.
+// No second AI model request is made.
+
+async function wikipediaRequest(parameters) {
+
+    const url = new URL("https://en.wikipedia.org/w/api.php");
+
+    for (const [key, value] of Object.entries(parameters)) {
+        url.searchParams.set(key, value);
+    }
+
+    url.searchParams.set("format", "json");
+    url.searchParams.set("origin", "*");
+
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+        throw new Error(
+            "Wikipedia returned HTTP " + response.status
+        );
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+        throw new Error(data.error.info || "Wikipedia API error");
+    }
+
+    return data;
+}
 
 async function researchWikipedia(query) {
 
     status.textContent = "Searching Wikipedia...";
 
-    const url =
-        "https://en.wikipedia.org/w/api.php" +
-        "?action=query" +
-        "&generator=search" +
-        "&gsrsearch=" + encodeURIComponent(query) +
-        "&gsrlimit=3" +
-        "&prop=extracts" +
-        "&exintro=1" +
-        "&explaintext=1" +
-        "&exsentences=3" +
-        "&format=json" +
-        "&origin=*";
+    // FIRST REQUEST: SEARCH FOR ARTICLES
 
-    const response = await fetch(url);
+    const searchData = await wikipediaRequest({
+        action: "query",
+        list: "search",
+        srsearch: query,
+        srlimit: "3"
+    });
 
-    if (!response.ok) {
-        throw new Error("Wikipedia search failed.");
-    }
+    const searchResults = searchData.query?.search || [];
 
-    const data = await response.json();
-
-    const pages = data.query && data.query.pages
-        ? Object.values(data.query.pages)
-        : [];
-
-    pages.sort((a, b) => (a.index || 0) - (b.index || 0));
-
-    const heading = addMessage(
-        "Sophia",
-        "I found these Wikipedia results. Here are the article introductions and their sources:",
-        "sophia"
-    );
-
-    if (pages.length === 0) {
-        heading.textContent = "I couldn't find matching Wikipedia articles.";
+    if (searchResults.length === 0) {
+        addMessage(
+            "Sophia",
+            "I couldn't find any matching Wikipedia articles.",
+            "sophia"
+        );
         return;
     }
 
-    pages.forEach(page => {
+    const pageIds = searchResults
+        .map(page => page.pageid)
+        .join("|");
+
+    status.textContent = "Retrieving article introductions...";
+
+    // SECOND REQUEST: RETRIEVE ARTICLE INTRODUCTIONS
+
+    const articleData = await wikipediaRequest({
+        action: "query",
+        prop: "extracts",
+        pageids: pageIds,
+        exintro: "1",
+        explaintext: "1",
+        exsentences: "3"
+    });
+
+    const pages = Object.values(
+        articleData.query?.pages || {}
+    );
+
+    const pageMap = new Map(
+        pages.map(page => [page.pageid, page])
+    );
+
+    const results = searchResults
+        .map(result => pageMap.get(result.pageid))
+        .filter(Boolean);
+
+    if (results.length === 0) {
+        throw new Error(
+            "The search worked, but Wikipedia returned no article introductions."
+        );
+    }
+
+    addMessage(
+        "Sophia",
+        "I've found these Wikipedia articles. Here are their introductions and original sources:",
+        "sophia"
+    );
+
+    // DISPLAY RESULTS AND SOURCE LINKS
+
+    results.forEach(page => {
 
         const card = document.createElement("div");
         card.className = "research-result";
@@ -532,9 +551,11 @@ async function researchWikipedia(query) {
             "No introduction was available for this article.";
 
         const link = document.createElement("a");
+
         link.href =
             "https://en.wikipedia.org/wiki/" +
             encodeURIComponent(page.title.replace(/ /g, "_"));
+
         link.textContent = "Read the full Wikipedia article";
         link.target = "_blank";
         link.rel = "noopener noreferrer";
@@ -549,14 +570,12 @@ async function researchWikipedia(query) {
     conversation.scrollTop = conversation.scrollHeight;
 }
 
-// =====================================
 // START SOPHIA'S AI
-// =====================================
 
 startButton.addEventListener("click", async () => {
 
     startButton.disabled = true;
-    status.textContent = "Preparing Sophia's lighter AI...";
+    status.textContent = "Preparing Sophia's AI...";
 
     try {
         const webllm = await import(
@@ -592,9 +611,7 @@ startButton.addEventListener("click", async () => {
     }
 });
 
-// =====================================
 // PROCESS MESSAGES
-// =====================================
 
 async function sendMessage() {
 
@@ -746,7 +763,6 @@ async function sendMessage() {
     }
 
     // WIKIPEDIA SEARCH
-    // No second AI request is made here.
 
     if (command.startsWith("search:")) {
 
@@ -772,7 +788,8 @@ async function sendMessage() {
 
             addMessage(
                 "Sophia",
-                "I couldn't complete the research. Please check your internet connection and try again.",
+                "I couldn't complete the research. The technical reason was: " +
+                error.message,
                 "sophia"
             );
         }
@@ -841,8 +858,6 @@ async function sendMessage() {
             content: reply
         });
 
-        // CHECK FOR A POSSIBLE NEW MEMORY
-
         const proposedMemory =
             suggestMemoryFromMessage(message);
 
@@ -875,9 +890,7 @@ async function sendMessage() {
     finishMessage();
 }
 
-// =====================================
 // BUTTON AND KEYBOARD CONTROLS
-// =====================================
 
 sendButton.addEventListener("click", sendMessage);
 
