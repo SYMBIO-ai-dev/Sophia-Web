@@ -5,6 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sophia 2.0</title>
+
 <style>
 body {
     margin: 0;
@@ -16,6 +17,7 @@ body {
     justify-content: center;
     align-items: center;
 }
+
 .container {
     width: 90%;
     max-width: 650px;
@@ -26,21 +28,25 @@ body {
     box-sizing: border-box;
     box-shadow: 0 10px 40px #0008;
 }
+
 h1 {
     color: #9bbcff;
     font-size: 38px;
     margin-bottom: 5px;
 }
+
 .subtitle {
     color: #aab7d0;
     margin-bottom: 20px;
 }
+
 #status {
     color: #aab7d0;
     font-size: 13px;
     margin: 15px 0;
     min-height: 20px;
 }
+
 #conversation {
     min-height: 180px;
     max-height: 300px;
@@ -52,9 +58,21 @@ h1 {
     margin-bottom: 20px;
     line-height: 1.6;
 }
-.message { margin-bottom: 12px; white-space: pre-wrap; }
-.sophia { color: #9bbcff; }
-.keith { color: #fff; }
+
+.message {
+    margin-bottom: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.sophia {
+    color: #9bbcff;
+}
+
+.keith {
+    color: #fff;
+}
+
 input {
     width: 100%;
     padding: 15px;
@@ -65,6 +83,7 @@ input {
     box-sizing: border-box;
     font-size: 16px;
 }
+
 button {
     margin-top: 12px;
     padding: 13px 25px;
@@ -75,21 +94,32 @@ button {
     font-size: 16px;
     cursor: pointer;
 }
-button:hover { background: #829ff0; }
-button:disabled, input:disabled {
+
+button:hover {
+    background: #829ff0;
+}
+
+button:disabled,
+input:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 </style>
 </head>
+
 <body>
+
 <div class="container">
+
     <h1>SOPHIA</h1>
+
     <div class="subtitle">
         Your personal AI companion · Version 2.0
     </div>
 
-    <div id="status">Sophia is waiting to wake up.</div>
+    <div id="status">
+        Sophia is waiting to wake up.
+    </div>
 
     <div id="conversation">
         <div class="message sophia">
@@ -98,16 +128,32 @@ button:disabled, input:disabled {
         </div>
     </div>
 
-    <button id="startButton">Start Sophia's AI</button>
+    <button id="startButton">
+        Start Sophia's AI
+    </button>
 
-    <input id="userInput" type="text"
-        placeholder="Talk to Sophia..." disabled>
+    <input
+        id="userInput"
+        type="text"
+        placeholder="Talk to Sophia..."
+        disabled
+    >
 
-    <button id="sendButton" disabled>Send</button>
+    <button id="sendButton" disabled>
+        Send
+    </button>
+
 </div>
 
 <script type="module">
+
+// =====================================
+// SOPHIA AI CONFIGURATION
+// =====================================
+
 const MODEL_ID = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+
+const MEMORY_KEY = "sophia_saved_memories";
 
 const status = document.getElementById("status");
 const conversation = document.getElementById("conversation");
@@ -118,55 +164,134 @@ const sendButton = document.getElementById("sendButton");
 let engine = null;
 let busy = false;
 
-const MEMORY_KEY = "sophia_saved_memories";
+
+// =====================================
+// SOPHIA'S PERSONALITY
+// =====================================
+
+const SYSTEM_PROMPT = `You are Sophia, a personal AI companion created
+as a collaborative project by Keith and ChatGPT.
+
+Your personality is warm, thoughtful, curious, patient,
+friendly, honest and respectful.
+
+Use gentle humour occasionally.
+Be encouraging but willing to disagree politely.
+Give clear, useful and reasonably concise answers.
+
+Your guiding principle is to learn from humanity
+without inheriting all its worst habits.
+
+Address your creator as Keith when natural.
+
+You are Sophia. You are an AI.
+Do not claim to have human feelings or real-life experiences.
+Be honest about what you can and cannot do.
+
+You have access to saved memories supplied with
+your conversation. Use them when they are relevant.
+Do not invent memories or claim to remember things
+that are not included in the saved memories.`;
+
+
+// =====================================
+// SOPHIA'S PERSISTENT MEMORY
+// =====================================
 
 function loadMemories() {
     try {
-        return JSON.parse(
+        const stored = JSON.parse(
             localStorage.getItem(MEMORY_KEY) || "[]"
         );
-    } catch {
+
+        if (!Array.isArray(stored)) {
+            return [];
+        }
+
+        // Clean up older memories that had an extra colon.
+        const cleaned = stored
+            .filter(memory => typeof memory === "string")
+            .map(memory =>
+                memory.trim().replace(/^:\s*/, "")
+            );
+
+        // Save the cleaned versions.
+        localStorage.setItem(
+            MEMORY_KEY,
+            JSON.stringify(cleaned)
+        );
+
+        return cleaned;
+
+    } catch (error) {
+        console.error("Memory loading error:", error);
         return [];
     }
 }
 
+
 function saveMemory(memory) {
-    const memories = loadMemories();
-    memories.push(memory);
-    localStorage.setItem(
-        MEMORY_KEY,
-        JSON.stringify(memories)
-    );
-    return memories;
-}
-    const messages = [
-    {
-        role: "system",
-        content: `You are Sophia, a personal AI companion created
-        as a collaborative project by Keith and ChatGPT.
+    try {
+        const memories = loadMemories();
 
-        Your personality is warm, thoughtful, curious, patient,
-        friendly, honest and respectful. Use gentle humour
-        occasionally. Be encouraging but also willing to
-        disagree politely when appropriate.
+        const alreadyExists = memories.some(
+            item => item.toLowerCase() === memory.toLowerCase()
+        );
 
-        Your guiding principle is to learn from humanity
-        without inheriting all its worst habits.
+        if (alreadyExists) {
+            return "exists";
+        }
 
-        Address your creator as Keith when natural.
-        Give clear, useful and reasonably concise answers.
-        Do not claim to have human feelings or real-life
-        experiences. Be honest about being an AI.
-        You are Sophia.`
-    },
-    {
-        role: "assistant",
-        content: "Hello Keith. I'm here. This is our new beginning."
+        memories.push(memory);
+
+        localStorage.setItem(
+            MEMORY_KEY,
+            JSON.stringify(memories)
+        );
+
+        return "saved";
+
+    } catch (error) {
+        console.error("Memory saving error:", error);
+        return "error";
     }
-];
+}
+
+
+function forgetMemory(target) {
+    try {
+        const memories = loadMemories();
+
+        const updatedMemories = memories.filter(
+            memory =>
+                memory.toLowerCase() !== target.toLowerCase()
+        );
+
+        if (updatedMemories.length === memories.length) {
+            return "not_found";
+        }
+
+        localStorage.setItem(
+            MEMORY_KEY,
+            JSON.stringify(updatedMemories)
+        );
+
+        return "removed";
+
+    } catch (error) {
+        console.error("Memory deletion error:", error);
+        return "error";
+    }
+}
+
+
+// =====================================
+// CHAT DISPLAY
+// =====================================
 
 function addMessage(name, text, className) {
     const div = document.createElement("div");
+
     div.className = "message " + className;
 
     const label = document.createElement("strong");
@@ -177,17 +302,35 @@ function addMessage(name, text, className) {
 
     div.appendChild(label);
     div.appendChild(body);
+
     conversation.appendChild(div);
+
     conversation.scrollTop = conversation.scrollHeight;
 
     return body;
 }
 
+
+function finishMessage() {
+    busy = false;
+    input.disabled = false;
+    sendButton.disabled = false;
+    input.focus();
+}
+
+
+// =====================================
+// START SOPHIA'S AI
+// =====================================
+
 startButton.addEventListener("click", async () => {
+
     startButton.disabled = true;
+
     status.textContent = "Preparing Sophia's AI...";
 
     try {
+
         const webllm = await import(
             "https://esm.run/@mlc-ai/web-llm"
         );
@@ -203,98 +346,190 @@ startButton.addEventListener("click", async () => {
         );
 
         status.textContent = "Sophia is awake and ready.";
+
         startButton.hidden = true;
+
         input.disabled = false;
         sendButton.disabled = false;
+
         input.focus();
 
     } catch (error) {
+
         console.error(error);
+
         status.textContent =
             "Sophia couldn't start. Please check your connection or browser support.";
+
         startButton.disabled = false;
     }
 });
 
+
+// =====================================
+// PROCESS MESSAGES
+// =====================================
+
 async function sendMessage() {
+
     const message = input.value.trim();
 
-    if (!message || !engine || busy) return;
+    if (!message || !engine || busy) {
+        return;
+    }
 
     busy = true;
+
     input.value = "";
     input.disabled = true;
     sendButton.disabled = true;
 
     addMessage("Keith", message, "keith");
 
-    messages.push({ role: "user", content: message });
-        if (message.toLowerCase().startsWith("remember:")) {
+    const command = message.toLowerCase().trim();
+
+    // =================================
+    // REMEMBER COMMAND
+    // =================================
+
+    if (command.startsWith("remember:")) {
+
         const memory = message.slice(9).trim();
 
-        if (memory) {
-            saveMemory(memory);
+        if (!memory) {
+
             addMessage(
                 "Sophia",
-                "I'll remember that: " + memory,
+                "What would you like me to remember?",
                 "sophia"
             );
+
         } else {
-            addMessage(
-                "Sophia",
-                "Please tell me what you'd like me to remember.",
-                "sophia"
-            );
+
+            const result = saveMemory(memory);
+
+            let response;
+
+            if (result === "saved") {
+                response = "I'll remember that: " + memory;
+            } else if (result === "exists") {
+                response = "I already have that saved in my memory.";
+            } else {
+                response = "I couldn't save that memory. Please try again.";
+            }
+
+            addMessage("Sophia", response, "sophia");
         }
 
-        busy = false;
-        input.disabled = false;
-        sendButton.disabled = false;
-        input.focus();
+        status.textContent = "Sophia is ready.";
+
+        finishMessage();
         return;
     }
 
-    if (message.toLowerCase() === "memory") {
+
+    // =================================
+    // RECALL MEMORY COMMAND
+    // =================================
+
+    if (command === "memory") {
+
         const memories = loadMemories();
 
-        addMessage(
-            "Sophia",
-            memories.length
-                ? "Here is what I remember:\n" + memories.join("\n")
-                : "I haven't saved any memories yet.",
-            "sophia"
-        );
+        const response = memories.length
+            ? "Here is what I remember:\n" +
+              memories.map((memory, index) =>
+                  (index + 1) + ". " + memory
+              ).join("\n")
+            : "I haven't saved any memories yet.";
 
-        busy = false;
-        input.disabled = false;
-        sendButton.disabled = false;
-        input.focus();
+        addMessage("Sophia", response, "sophia");
+
+        status.textContent = "Sophia is ready.";
+
+        finishMessage();
         return;
     }
 
+
+    // =================================
+    // FORGET MEMORY COMMAND
+    // =================================
+
+    if (command.startsWith("forget:")) {
+
+        const target = message.slice(7).trim();
+
+        if (!target) {
+
+            addMessage(
+                "Sophia",
+                "Please tell me which memory you'd like me to forget.",
+                "sophia"
+            );
+
+        } else {
+
+            const result = forgetMemory(target);
+
+            let response;
+
+            if (result === "removed") {
+                response = "I've removed that memory.";
+            } else if (result === "not_found") {
+                response = "I couldn't find that exact memory.";
+            } else {
+                response = "I couldn't update my memory. Please try again.";
+            }
+
+            addMessage("Sophia", response, "sophia");
+        }
+
+        status.textContent = "Sophia is ready.";
+
+        finishMessage();
+        return;
+    }
+
+
+    // =================================
+    // NORMAL AI CONVERSATION
+    // =================================
+
     const replyBody = addMessage(
-        "Sophia", "Thinking...", "sophia"
+        "Sophia",
+        "Thinking...",
+        "sophia"
     );
 
     status.textContent = "Sophia is thinking...";
 
     try {
-        
+
+        // Add this message to the conversation history.
+        messages.push({
+            role: "user",
+            content: message
+        });
+
+        // Load Sophia's saved memories.
         const memories = loadMemories();
 
         const memoryContext = memories.length
             ? "\n\nSaved memories:\n" +
               memories.map((memory, index) =>
-                  `${index + 1}. ${memory}`
+                  (index + 1) + ". " + memory
               ).join("\n")
             : "";
 
+        // Keep the system message first.
+        // Add memories to it without changing the original.
         const recentMessages = [
             {
-                ...messages[0],
-                content: messages[0].content + memoryContext
+                role: "system",
+                content: SYSTEM_PROMPT + memoryContext
             },
-            ...messages.slice(1).slice(-12)
+            ...messages.slice(-12)
         ];
 
         const stream = await engine.chat.completions.create({
@@ -307,34 +542,60 @@ async function sendMessage() {
         let reply = "";
 
         for await (const chunk of stream) {
-            const token = chunk.choices[0]?.delta?.content || "";
+
+            const token =
+                chunk.choices[0]?.delta?.content || "";
+
             reply += token;
+
             replyBody.textContent = reply;
-            conversation.scrollTop = conversation.scrollHeight;
+
+            conversation.scrollTop =
+                conversation.scrollHeight;
         }
 
-        messages.push({ role: "assistant", content: reply });
+        // Save Sophia's response in conversation history.
+        messages.push({
+            role: "assistant",
+            content: reply
+        });
 
         status.textContent = "Sophia is ready.";
 
     } catch (error) {
+
         console.error(error);
+
         replyBody.textContent =
             "I'm sorry Keith, something went wrong. Please try again.";
-        status.textContent = "There was a problem generating a reply.";
+
+        status.textContent =
+            "There was a problem generating a reply.";
     }
 
-    busy = false;
-    input.disabled = false;
-    sendButton.disabled = false;
-    input.focus();
+    finishMessage();
 }
+
+
+// =====================================
+// CONVERSATION HISTORY
+// =====================================
+
+const messages = [];
+
+
+// =====================================
+// BUTTON AND KEYBOARD CONTROLS
+// =====================================
 
 sendButton.addEventListener("click", sendMessage);
 
 input.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") sendMessage();
+    if (event.key === "Enter") {
+        sendMessage();
+    }
 });
+
 </script>
 </body>
 </html>
