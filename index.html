@@ -980,5 +980,99 @@ input.addEventListener("keydown", event => {
 });
 
 </script>
+
+<script>
+(() => {
+    const WORKER_URL =
+        "https://sophia-intelligence.kjope-436.workers.dev";
+
+    const SESSION_KEY = "sophia_github_session";
+
+    // Recover the session returned by GitHub after sign-in.
+    const fragment = window.location.hash;
+
+    if (fragment.includes("sophia_session=")) {
+        const params = new URLSearchParams(fragment.substring(1));
+        const session = params.get("sophia_session");
+        const login = params.get("sophia_login");
+
+        if (session && login) {
+            sessionStorage.setItem(SESSION_KEY, session);
+            sessionStorage.setItem("sophia_github_login", login);
+        }
+
+        history.replaceState(
+            null,
+            "",
+            window.location.pathname + window.location.search
+        );
+    }
+
+    if (fragment.includes("sophia_auth_error=")) {
+        const params = new URLSearchParams(fragment.substring(1));
+        alert("Sophia GitHub sign-in: " +
+            (params.get("sophia_auth_error") || "Unknown error"));
+
+        history.replaceState(
+            null,
+            "",
+            window.location.pathname + window.location.search
+        );
+    }
+
+    // Create a GitHub connection button.
+    const button = document.createElement("button");
+
+    button.textContent = "Connect GitHub";
+    button.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+        padding: 12px 18px;
+        border: 1px solid #7186b8;
+        border-radius: 10px;
+        background: #263653;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+    `;
+
+    button.onclick = () => {
+        window.location.href = WORKER_URL + "/github/login";
+    };
+
+    document.body.appendChild(button);
+
+    // Allow Sophia's code to request an approved repository file.
+    window.sophiaReadGitHubFile = async (repo, path) => {
+        const session = sessionStorage.getItem(SESSION_KEY);
+
+        if (!session) {
+            throw new Error("Please connect GitHub first.");
+        }
+
+        const response = await fetch(WORKER_URL + "/github/read", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + session
+            },
+            body: JSON.stringify({ repo, path })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || "GitHub reading failed.");
+        }
+
+        return result.content;
+    };
+
+    console.log("Sophia GitHub connection module loaded.");
+})();
+</script>
+
 </body>
 </html>
