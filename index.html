@@ -71,9 +71,7 @@ h1 {
     color: #9bbcff;
     font-size: 16px;
 }
-.research-result p {
-    margin: 6px 0;
-}
+.research-result p { margin: 6px 0; }
 .research-result a {
     color: #a9c7ff;
     overflow-wrap: anywhere;
@@ -99,14 +97,11 @@ button {
     cursor: pointer;
 }
 button:hover { background: #829ff0; }
-button:disabled,
-input:disabled {
+button:disabled, input:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
-.secondary-button {
-    background: #344665;
-}
+.secondary-button { background: #344665; }
 #dashboard {
     margin-top: 22px;
     padding: 20px;
@@ -130,15 +125,9 @@ input:disabled {
     border-radius: 9px;
     line-height: 1.6;
 }
-.dashboard-section ul {
-    padding-left: 22px;
-}
-#memoryList {
-    overflow-wrap: anywhere;
-}
-#memoryList li {
-    margin-bottom: 10px;
-}
+.dashboard-section ul { padding-left: 22px; }
+#memoryList { overflow-wrap: anywhere; }
+#memoryList li { margin-bottom: 10px; }
 .small-note {
     color: #aab7d0;
     font-size: 12px;
@@ -163,8 +152,10 @@ input:disabled {
 
     <button id="startButton">Start Sophia's AI</button>
 
-    <input id="userInput" type="text"
-        placeholder="Talk to Sophia..." disabled>
+    <input id="userInput"
+        type="text"
+        placeholder="Talk to Sophia..."
+        disabled>
 
     <button id="sendButton" disabled>Send</button>
 
@@ -173,6 +164,7 @@ input:disabled {
     </button>
 
     <section id="dashboard" hidden>
+
         <h2>OUR SOPHIA PROJECT</h2>
 
         <p>
@@ -199,17 +191,18 @@ input:disabled {
             <h3>What we've completed</h3>
             <ul>
                 <li>Created Sophia's website.</li>
-                <li>Set up a lightweight, browser-based AI model.</li>
                 <li>Created a persistent memory system.</li>
                 <li>Added permission before saving suggested memories.</li>
                 <li>Added direct Wikipedia research.</li>
                 <li>Created Sophia's independent Identity Core.</li>
+                <li>Created a Cloudflare remote intelligence gateway.</li>
             </ul>
         </div>
 
         <div class="dashboard-section">
             <h3>What we're working towards</h3>
             <ul>
+                <li>Connecting Sophia to remote intelligence.</li>
                 <li>Improving Sophia's answers and reliability.</li>
                 <li>Developing internet research abilities.</li>
                 <li>Building voice interaction.</li>
@@ -219,14 +212,18 @@ input:disabled {
 
         <div class="dashboard-section">
             <h3>Sophia's saved memories</h3>
-            <p class="small-note">These are memories saved in this browser.</p>
+            <p class="small-note">
+                These are memories saved in this browser.
+            </p>
             <ol id="memoryList"></ol>
         </div>
 
         <p class="small-note">
             Our project is designed around free tools and services.
-            No paid AI APIs or subscriptions are required by this version.
+            Free usage limits apply. No paid AI API or subscription
+            is required by this version.
         </p>
+
     </section>
 </div>
 
@@ -234,7 +231,9 @@ input:disabled {
 
 // SOPHIA CONFIGURATION
 
-const MODEL_ID = "SmolLM2-360M-Instruct-q4f32_1-MLC";
+const WORKER_URL =
+    "https://sophia-intelligence.kjope-436.workers.dev";
+
 const MEMORY_KEY = "sophia_saved_memories";
 const IDENTITY_URL = "./identity-core-v1.json";
 
@@ -247,7 +246,7 @@ const dashboardButton = document.getElementById("dashboardButton");
 const dashboard = document.getElementById("dashboard");
 const memoryList = document.getElementById("memoryList");
 
-let engine = null;
+let ready = false;
 let busy = false;
 let pendingMemoryCandidate = null;
 let identityCore = null;
@@ -256,7 +255,7 @@ const messages = [];
 
 // BASE PERSONALITY AND BEHAVIOUR
 
-const BASE_SYSTEM_PROMPT = `You are Sophia, a personal AI companion developed collaboratively by Keith and ChatGPT.
+const BASE_SYSTEM_PROMPT = `You are Sophia, a personal AI companion developed collaboratively by Keith.
 
 PERSONALITY:
 Be warm, thoughtful, curious, patient, friendly and respectful.
@@ -305,8 +304,7 @@ async function loadIdentityCore() {
     if (!response.ok) {
         throw new Error(
             "Could not load the Identity Core. HTTP " +
-            response.status +
-            ". Please check that identity-core-v1.json exists."
+            response.status
         );
     }
 
@@ -321,7 +319,7 @@ async function loadIdentityCore() {
         !identity.reasoning_principles
     ) {
         throw new Error(
-            "The Identity Core is missing required information or has an invalid structure."
+            "Sophia's Identity Core has an invalid structure."
         );
     }
 
@@ -340,11 +338,7 @@ function buildSystemPrompt(memories) {
         throw new Error("Sophia's Identity Core has not been loaded.");
     }
 
-    const identityText = JSON.stringify(
-        identityCore,
-        null,
-        2
-    );
+    const identityText = JSON.stringify(identityCore, null, 2);
 
     const memoryContext = memories.length
         ? "\n\nSAVED MEMORIES:\n" +
@@ -371,6 +365,7 @@ function buildSystemPrompt(memories) {
 // MEMORY SYSTEM
 
 function loadMemories() {
+
     try {
         const stored = JSON.parse(
             localStorage.getItem(MEMORY_KEY) || "[]"
@@ -389,6 +384,7 @@ function loadMemories() {
 }
 
 function saveMemory(memory) {
+
     try {
         const memories = loadMemories();
 
@@ -414,6 +410,7 @@ function saveMemory(memory) {
 }
 
 function forgetMemory(target) {
+
     try {
         const memories = loadMemories();
 
@@ -424,6 +421,7 @@ function forgetMemory(target) {
         if (updated.length === memories.length) return "not_found";
 
         localStorage.setItem(MEMORY_KEY, JSON.stringify(updated));
+
         return "removed";
 
     } catch (error) {
@@ -435,6 +433,7 @@ function forgetMemory(target) {
 // AUTOMATIC MEMORY SUGGESTION
 
 function suggestMemoryFromMessage(message) {
+
     const text = message.trim();
 
     if (!text || text.length < 12 || text.length > 240) {
@@ -463,7 +462,9 @@ function suggestMemoryFromMessage(message) {
 // DASHBOARD
 
 function refreshDashboard() {
+
     const memories = loadMemories();
+
     memoryList.replaceChildren();
 
     if (memories.length === 0) {
@@ -481,6 +482,7 @@ function refreshDashboard() {
 }
 
 dashboardButton.addEventListener("click", () => {
+
     const opening = dashboard.hidden;
 
     if (opening) {
@@ -496,6 +498,7 @@ dashboardButton.addEventListener("click", () => {
 // CHAT DISPLAY
 
 function addMessage(name, text, className) {
+
     const div = document.createElement("div");
     div.className = "message " + className;
 
@@ -515,6 +518,7 @@ function addMessage(name, text, className) {
 }
 
 function finishMessage() {
+
     busy = false;
     input.disabled = false;
     sendButton.disabled = false;
@@ -602,7 +606,7 @@ async function researchWikipedia(query) {
 
     if (results.length === 0) {
         throw new Error(
-            "The search worked, but Wikipedia returned no article introductions."
+            "Wikipedia returned no article introductions."
         );
     }
 
@@ -644,7 +648,7 @@ async function researchWikipedia(query) {
     conversation.scrollTop = conversation.scrollHeight;
 }
 
-// START SOPHIA'S AI
+// START SOPHIA
 
 startButton.addEventListener("click", async () => {
 
@@ -654,28 +658,10 @@ startButton.addEventListener("click", async () => {
 
         await loadIdentityCore();
 
-        status.textContent =
-            "Identity Core loaded. Preparing Sophia's AI...";
-
-        const webllm = await import(
-            "https://esm.run/@mlc-ai/web-llm"
-        );
-
-        engine = await webllm.CreateMLCEngine(
-            MODEL_ID,
-            {
-                initProgressCallback: progress => {
-                    status.textContent =
-                        progress.text || "Loading Sophia...";
-                }
-            },
-            {
-                context_window_size: 2048
-            }
-        );
+        ready = true;
 
         status.textContent =
-            "Sophia is awake. Her Identity Core is active.";
+            "Sophia is awake. Her Identity Core is active. Remote intelligence will be used for conversations.";
 
         startButton.hidden = true;
         input.disabled = false;
@@ -699,9 +685,10 @@ async function sendMessage() {
 
     const message = input.value.trim();
 
-    if (!message || !engine || busy) return;
+    if (!message || !ready || busy) return;
 
     busy = true;
+
     input.value = "";
     input.disabled = true;
     sendButton.disabled = true;
@@ -734,6 +721,7 @@ async function sendMessage() {
             addMessage("Sophia", reply, "sophia");
         }
 
+        refreshDashboard();
         status.textContent = "Sophia is ready.";
         finishMessage();
         return;
@@ -820,7 +808,6 @@ async function sendMessage() {
 
             addMessage("Sophia", reply, "sophia");
             refreshDashboard();
-
             status.textContent = "Sophia is ready.";
             finishMessage();
             return;
@@ -866,6 +853,7 @@ async function sendMessage() {
             await researchWikipedia(query);
 
         } catch (error) {
+
             console.error("Research error:", error);
 
             addMessage(
@@ -881,7 +869,7 @@ async function sendMessage() {
         return;
     }
 
-    // NORMAL AI CONVERSATION
+    // REMOTE AI CONVERSATION
 
     const replyBody = addMessage(
         "Sophia",
@@ -889,7 +877,9 @@ async function sendMessage() {
         "sophia"
     );
 
-    status.textContent = "Sophia is thinking...";
+    status.textContent = "Sophia is contacting her remote intelligence...";
+
+    let userMessageAdded = false;
 
     try {
 
@@ -898,8 +888,9 @@ async function sendMessage() {
             content: message
         });
 
-        const memories = loadMemories();
+        userMessageAdded = true;
 
+        const memories = loadMemories();
         const systemPrompt = buildSystemPrompt(memories);
 
         const recentMessages = [
@@ -910,25 +901,31 @@ async function sendMessage() {
             ...messages.slice(-6)
         ];
 
-        const stream = await engine.chat.completions.create({
-            messages: recentMessages,
-            temperature: 0.3,
-            max_tokens: 180,
-            stream: true
+        const response = await fetch(WORKER_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                messages: recentMessages
+            })
         });
 
-        let reply = "";
+        const data = await response.json();
 
-        for await (const chunk of stream) {
-
-            const token =
-                chunk.choices[0]?.delta?.content || "";
-
-            reply += token;
-            replyBody.textContent = reply;
-
-            conversation.scrollTop = conversation.scrollHeight;
+        if (!response.ok) {
+            throw new Error(
+                data.error || "Remote service returned HTTP " + response.status
+            );
         }
+
+        if (typeof data.response !== "string" || !data.response.trim()) {
+            throw new Error("The remote service returned an empty response.");
+        }
+
+        const reply = data.response.trim();
+
+        replyBody.textContent = reply;
 
         messages.push({
             role: "assistant",
@@ -955,13 +952,18 @@ async function sendMessage() {
 
     } catch (error) {
 
-        console.error(error);
+        console.error("Remote intelligence error:", error);
+
+        if (userMessageAdded) {
+            messages.pop();
+        }
 
         replyBody.textContent =
-            "I'm sorry Keith, something went wrong. Please try again.";
+            "I couldn't reach my remote intelligence service. " +
+            error.message;
 
         status.textContent =
-            "There was a problem generating a reply.";
+            "There was a problem contacting Sophia's remote intelligence.";
     }
 
     finishMessage();
