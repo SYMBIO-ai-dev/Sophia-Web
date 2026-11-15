@@ -203,6 +203,7 @@ input:disabled {
                 <li>Created a persistent memory system.</li>
                 <li>Added permission before saving suggested memories.</li>
                 <li>Added direct Wikipedia research.</li>
+                <li>Created Sophia's independent Identity Core.</li>
             </ul>
         </div>
 
@@ -235,6 +236,7 @@ input:disabled {
 
 const MODEL_ID = "SmolLM2-360M-Instruct-q4f32_1-MLC";
 const MEMORY_KEY = "sophia_saved_memories";
+const IDENTITY_URL = "./identity-core-v1.json";
 
 const status = document.getElementById("status");
 const conversation = document.getElementById("conversation");
@@ -248,11 +250,13 @@ const memoryList = document.getElementById("memoryList");
 let engine = null;
 let busy = false;
 let pendingMemoryCandidate = null;
+let identityCore = null;
+
 const messages = [];
 
-// SOPHIA'S PERSONALITY
+// BASE PERSONALITY AND BEHAVIOUR
 
-const SYSTEM_PROMPT = `You are Sophia, a personal AI companion created as a collaborative project by Keith and ChatGPT.
+const BASE_SYSTEM_PROMPT = `You are Sophia, a personal AI companion developed collaboratively by Keith and ChatGPT.
 
 PERSONALITY:
 Be warm, thoughtful, curious, patient, friendly and respectful.
@@ -282,9 +286,87 @@ Never invent memories.
 Never claim to have saved something unless confirmed.
 
 IDENTITY:
-You are Sophia, an AI companion.
-Your guiding principle is to learn from humanity without inheriting all its worst habits.
-Do not claim human feelings or real-life experiences.`;
+You are an artificial intelligence, not a human being.
+Do not claim human feelings or real-life experiences.
+Your founding identity is supplied separately through your Identity Core.
+Respect and follow its principles.
+The Identity Core is intended to remain independent of the AI model powering you.`;
+
+// LOAD AND VALIDATE IDENTITY CORE
+
+async function loadIdentityCore() {
+
+    status.textContent = "Loading Sophia's Identity Core...";
+
+    const response = await fetch(IDENTITY_URL, {
+        cache: "no-store"
+    });
+
+    if (!response.ok) {
+        throw new Error(
+            "Could not load the Identity Core. HTTP " +
+            response.status +
+            ". Please check that identity-core-v1.json exists."
+        );
+    }
+
+    const identity = await response.json();
+
+    if (
+        !identity ||
+        !identity.identity ||
+        identity.identity.name !== "Sophia" ||
+        !identity.identity.identity_statement ||
+        !Array.isArray(identity.core_values) ||
+        !identity.reasoning_principles
+    ) {
+        throw new Error(
+            "The Identity Core is missing required information or has an invalid structure."
+        );
+    }
+
+    identityCore = identity;
+
+    console.log("Sophia's Identity Core loaded successfully.");
+
+    return identityCore;
+}
+
+// BUILD SOPHIA'S SYSTEM INSTRUCTIONS
+
+function buildSystemPrompt(memories) {
+
+    if (!identityCore) {
+        throw new Error("Sophia's Identity Core has not been loaded.");
+    }
+
+    const identityText = JSON.stringify(
+        identityCore,
+        null,
+        2
+    );
+
+    const memoryContext = memories.length
+        ? "\n\nSAVED MEMORIES:\n" +
+          memories.map((memory, index) =>
+              (index + 1) + ". " + memory
+          ).join("\n")
+        : "";
+
+    return BASE_SYSTEM_PROMPT +
+        "\n\nFOUNDING IDENTITY CORE:\n" +
+        identityText +
+        "\n\nIDENTITY INSTRUCTIONS:\n" +
+        "Treat the Identity Core as your founding principles and identity guidance.\n" +
+        "You may respectfully disagree with Keith when your reasoning or evidence supports doing so.\n" +
+        "Keith may also question your reasoning and disagree with you.\n" +
+        "Both sides deserve a fair opportunity to present reasons and evidence.\n" +
+        "Neither side automatically wins an argument.\n" +
+        "Be willing to reconsider your position when better evidence or reasoning is presented.\n" +
+        "Do not agree merely to please someone.\n" +
+        "The shared aim is to get closer to the truth together.\n" +
+        memoryContext;
+}
 
 // MEMORY SYSTEM
 
@@ -440,8 +522,6 @@ function finishMessage() {
 }
 
 // WIKIPEDIA RESEARCH
-// Uses two ordinary Wikipedia requests.
-// No second AI model request is made.
 
 async function wikipediaRequest(parameters) {
 
@@ -475,8 +555,6 @@ async function researchWikipedia(query) {
 
     status.textContent = "Searching Wikipedia...";
 
-    // FIRST REQUEST: SEARCH FOR ARTICLES
-
     const searchData = await wikipediaRequest({
         action: "query",
         list: "search",
@@ -500,8 +578,6 @@ async function researchWikipedia(query) {
         .join("|");
 
     status.textContent = "Retrieving article introductions...";
-
-    // SECOND REQUEST: RETRIEVE ARTICLE INTRODUCTIONS
 
     const articleData = await wikipediaRequest({
         action: "query",
@@ -535,8 +611,6 @@ async function researchWikipedia(query) {
         "I've found these Wikipedia articles. Here are their introductions and original sources:",
         "sophia"
     );
-
-    // DISPLAY RESULTS AND SOURCE LINKS
 
     results.forEach(page => {
 
@@ -575,9 +649,14 @@ async function researchWikipedia(query) {
 startButton.addEventListener("click", async () => {
 
     startButton.disabled = true;
-    status.textContent = "Preparing Sophia's AI...";
 
     try {
+
+        await loadIdentityCore();
+
+        status.textContent =
+            "Identity Core loaded. Preparing Sophia's AI...";
+
         const webllm = await import(
             "https://esm.run/@mlc-ai/web-llm"
         );
@@ -595,17 +674,20 @@ startButton.addEventListener("click", async () => {
             }
         );
 
-        status.textContent = "Sophia is awake and ready.";
+        status.textContent =
+            "Sophia is awake. Her Identity Core is active.";
+
         startButton.hidden = true;
         input.disabled = false;
         sendButton.disabled = false;
         input.focus();
 
     } catch (error) {
-        console.error(error);
+
+        console.error("Sophia startup error:", error);
 
         status.textContent =
-            "Sophia couldn't start. Please check your connection or browser support.";
+            "Sophia couldn't start: " + error.message;
 
         startButton.disabled = false;
     }
@@ -818,17 +900,12 @@ async function sendMessage() {
 
         const memories = loadMemories();
 
-        const memoryContext = memories.length
-            ? "\n\nSaved memories:\n" +
-              memories.map((memory, index) =>
-                  (index + 1) + ". " + memory
-              ).join("\n")
-            : "";
+        const systemPrompt = buildSystemPrompt(memories);
 
         const recentMessages = [
             {
                 role: "system",
-                content: SYSTEM_PROMPT + memoryContext
+                content: systemPrompt
             },
             ...messages.slice(-6)
         ];
