@@ -141,7 +141,6 @@ button:disabled, input:disabled {
     <div class="subtitle">Your personal AI companion · Version 2.0</div>
 
     <div id="status">Sophia is waiting to wake up.</div>
-
     <div id="turnstile-container" style="display:flex; justify-content:center; margin:12px 0;"></div>
 
     <div id="conversation">
@@ -255,9 +254,10 @@ const sendButton = document.getElementById("sendButton");
 const dashboardButton = document.getElementById("dashboardButton");
 const dashboard = document.getElementById("dashboard");
 const memoryList = document.getElementById("memoryList");
-const turnstileContainer = document.getElementById("turnstile-container");
 
+const turnstileContainer = document.getElementById("turnstile-container");
 const TURNSTILE_SITE_KEY = "0x4AAAAAAGHaw8nMTIyEydqe";
+
 let turnstileWidgetId = null;
 let turnstileToken = null;
 
@@ -267,26 +267,32 @@ function renderSophiaTurnstile() {
     turnstileWidgetId = window.turnstile.render(turnstileContainer, {
         sitekey: TURNSTILE_SITE_KEY,
         theme: "dark",
+
         callback: token => {
             turnstileToken = token;
+
             if (ready && !busy) {
                 status.textContent = "Security check passed. Sophia is ready.";
             }
         },
+
         "expired-callback": () => {
             turnstileToken = null;
             status.textContent = "The security check has expired. Please complete it again.";
         },
+
         "error-callback": () => {
             turnstileToken = null;
-            status.textContent = "The security check had a problem. Please try again.";
-            return true;
+            status.textContent = "The security check had a problem. Please refresh the page and try again.";
         }
     });
 }
 
 window.addEventListener("sophia-turnstile-ready", renderSophiaTurnstile);
-if (window.sophiaTurnstileLoaded) renderSophiaTurnstile();
+
+if (window.sophiaTurnstileLoaded) {
+    renderSophiaTurnstile();
+}
 
 let ready = false;
 let busy = false;
@@ -377,3 +383,758 @@ async function loadIdentityCore() {
 function buildSystemPrompt(memories) {
 
     if (!identityCore) {
+        throw new Error("Sophia's Identity Core has not been loaded.");
+    }
+
+    const identityText = JSON.stringify(identityCore, null, 2);
+
+    const memoryContext = memories.length
+        ? "\n\nSAVED MEMORIES:\n" +
+          memories.map((memory, index) =>
+              (index + 1) + ". " + memory
+          ).join("\n")
+        : "";
+
+    return BASE_SYSTEM_PROMPT +
+        "\n\nFOUNDING IDENTITY CORE:\n" +
+        identityText +
+        "\n\nIDENTITY INSTRUCTIONS:\n" +
+        "Treat the Identity Core as your founding principles and identity guidance.\n" +
+        "You may respectfully disagree with Keith when your reasoning or evidence supports doing so.\n" +
+        "Keith may also question your reasoning and disagree with you.\n" +
+        "Both sides deserve a fair opportunity to present reasons and evidence.\n" +
+        "Neither side automatically wins an argument.\n" +
+        "Be willing to reconsider your position when better evidence or reasoning is presented.\n" +
+        "Do not agree merely to please someone.\n" +
+        "The shared aim is to get closer to the truth together.\n" +
+        memoryContext;
+}
+
+// MEMORY SYSTEM
+
+function loadMemories() {
+
+    try {
+        const stored = JSON.parse(
+            localStorage.getItem(MEMORY_KEY) || "[]"
+        );
+
+        if (!Array.isArray(stored)) return [];
+
+        return stored
+            .filter(memory => typeof memory === "string")
+            .map(memory => memory.trim());
+
+    } catch (error) {
+        console.error("Memory loading error:", error);
+        return [];
+    }
+}
+
+function saveMemory(memory) {
+
+    try {
+        const memories = loadMemories();
+
+        if (memories.some(
+            item => item.toLowerCase() === memory.toLowerCase()
+        )) {
+            return "exists";
+        }
+
+        memories.push(memory);
+
+        localStorage.setItem(
+            MEMORY_KEY,
+            JSON.stringify(memories)
+        );
+
+        return "saved";
+
+    } catch (error) {
+        console.error("Memory saving error:", error);
+        return "error";
+    }
+}
+
+function forgetMemory(target) {
+
+    try {
+        const memories = loadMemories();
+
+        const updated = memories.filter(
+            memory => memory.toLowerCase() !== target.toLowerCase()
+        );
+
+        if (updated.length === memories.length) return "not_found";
+
+        localStorage.setItem(MEMORY_KEY, JSON.stringify(updated));
+
+        return "removed";
+
+    } catch (error) {
+        console.error("Memory deletion error:", error);
+        return "error";
+    }
+}
+
+// AUTOMATIC MEMORY SUGGESTION
+
+function suggestMemoryFromMessage(message) {
+
+    const text = message.trim();
+
+    if (!text || text.length < 12 || text.length > 240) {
+        return null;
+    }
+
+    const sensitivePattern =
+        /\b(password|passcode|pin number|credit card|bank account|medical condition|diagnosis|medication|religion|political party|sexual orientation|private address|social security)\b/i;
+
+    if (sensitivePattern.test(text)) return null;
+
+    const usefulPattern =
+        /\b(I prefer|I like|I love|I usually|I always|I often|I want|I need|my goal is|my aim is|my plan is|my project is|I'm working on|I am working on|I'm building|I am building|I'm learning|I am learning|I'm trying to|I am trying to|please remember|keep in mind)\b/i;
+
+    if (!usefulPattern.test(text)) return null;
+
+    const candidate = text.replace(/^["']|["']$/g, "").trim();
+
+    const exists = loadMemories().some(
+        memory => memory.toLowerCase() === candidate.toLowerCase()
+    );
+
+    return exists ? null : candidate;
+}
+
+// DASHBOARD
+
+function refreshDashboard() {
+
+    const memories = loadMemories();
+
+    memoryList.replaceChildren();
+
+    if (memories.length === 0) {
+        const item = document.createElement("li");
+        item.textContent = "No saved memories yet.";
+        memoryList.appendChild(item);
+        return;
+    }
+
+    memories.forEach(memory => {
+        const item = document.createElement("li");
+        item.textContent = memory;
+        memoryList.appendChild(item);
+    });
+}
+
+dashboardButton.addEventListener("click", () => {
+
+    const opening = dashboard.hidden;
+
+    if (opening) {
+        refreshDashboard();
+        dashboard.hidden = false;
+        dashboardButton.textContent = "Close Project Dashboard";
+    } else {
+        dashboard.hidden = true;
+        dashboardButton.textContent = "Our Project Dashboard";
+    }
+});
+
+// CHAT DISPLAY
+
+function addMessage(name, text, className) {
+
+    const div = document.createElement("div");
+    div.className = "message " + className;
+
+    const label = document.createElement("strong");
+    label.textContent = name + ": ";
+
+    const body = document.createElement("span");
+    body.textContent = text;
+
+    div.appendChild(label);
+    div.appendChild(body);
+    conversation.appendChild(div);
+
+    conversation.scrollTop = conversation.scrollHeight;
+
+    return body;
+}
+
+function finishMessage() {
+
+    busy = false;
+    input.disabled = false;
+    sendButton.disabled = false;
+    input.focus();
+}
+
+// WIKIPEDIA RESEARCH
+
+async function wikipediaRequest(parameters) {
+
+    const url = new URL("https://en.wikipedia.org/w/api.php");
+
+    for (const [key, value] of Object.entries(parameters)) {
+        url.searchParams.set(key, value);
+    }
+
+    url.searchParams.set("format", "json");
+    url.searchParams.set("origin", "*");
+
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+        throw new Error(
+            "Wikipedia returned HTTP " + response.status
+        );
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+        throw new Error(data.error.info || "Wikipedia API error");
+    }
+
+    return data;
+}
+
+async function researchWikipedia(query) {
+
+    status.textContent = "Searching Wikipedia...";
+
+    const searchData = await wikipediaRequest({
+        action: "query",
+        list: "search",
+        srsearch: query,
+        srlimit: "3"
+    });
+
+    const searchResults = searchData.query?.search || [];
+
+    if (searchResults.length === 0) {
+        addMessage(
+            "Sophia",
+            "I couldn't find any matching Wikipedia articles.",
+            "sophia"
+        );
+        return;
+    }
+
+    const pageIds = searchResults
+        .map(page => page.pageid)
+        .join("|");
+
+    status.textContent = "Retrieving article introductions...";
+
+    const articleData = await wikipediaRequest({
+        action: "query",
+        prop: "extracts",
+        pageids: pageIds,
+        exintro: "1",
+        explaintext: "1",
+        exsentences: "3"
+    });
+
+    const pages = Object.values(
+        articleData.query?.pages || {}
+    );
+
+    const pageMap = new Map(
+        pages.map(page => [page.pageid, page])
+    );
+
+    const results = searchResults
+        .map(result => pageMap.get(result.pageid))
+        .filter(Boolean);
+
+    if (results.length === 0) {
+        throw new Error(
+            "Wikipedia returned no article introductions."
+        );
+    }
+
+    addMessage(
+        "Sophia",
+        "I've found these Wikipedia articles. Here are their introductions and original sources:",
+        "sophia"
+    );
+
+    results.forEach(page => {
+
+        const card = document.createElement("div");
+        card.className = "research-result";
+
+        const title = document.createElement("h3");
+        title.textContent = page.title;
+
+        const extract = document.createElement("p");
+        extract.textContent = page.extract ||
+            "No introduction was available for this article.";
+
+        const link = document.createElement("a");
+
+        link.href =
+            "https://en.wikipedia.org/wiki/" +
+            encodeURIComponent(page.title.replace(/ /g, "_"));
+
+        link.textContent = "Read the full Wikipedia article";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+
+        card.appendChild(title);
+        card.appendChild(extract);
+        card.appendChild(link);
+
+        conversation.appendChild(card);
+    });
+
+    conversation.scrollTop = conversation.scrollHeight;
+}
+
+// START SOPHIA
+
+startButton.addEventListener("click", async () => {
+
+    startButton.disabled = true;
+
+    try {
+
+        await loadIdentityCore();
+
+        ready = true;
+
+        status.textContent =
+            "Sophia is awake. Her Identity Core is active. Remote intelligence will be used for conversations.";
+
+        startButton.hidden = true;
+        input.disabled = false;
+        sendButton.disabled = false;
+        input.focus();
+
+    } catch (error) {
+
+        console.error("Sophia startup error:", error);
+
+        status.textContent =
+            "Sophia couldn't start: " + error.message;
+
+        startButton.disabled = false;
+    }
+});
+
+// PROCESS MESSAGES
+
+async function sendMessage() {
+
+    const message = input.value.trim();
+
+    if (!message || !ready || busy) return;
+
+    busy = true;
+
+    input.value = "";
+    input.disabled = true;
+    sendButton.disabled = true;
+
+    addMessage("Keith", message, "keith");
+
+    const command = message.toLowerCase().trim();
+
+    // REMEMBER COMMAND
+
+    if (command.startsWith("remember:")) {
+
+        const memory = message.slice(9).trim();
+
+        if (!memory) {
+            addMessage(
+                "Sophia",
+                "What would you like me to remember?",
+                "sophia"
+            );
+        } else {
+            const result = saveMemory(memory);
+
+            const reply = result === "saved"
+                ? "I'll remember that: " + memory
+                : result === "exists"
+                    ? "I already have that saved in my memory."
+                    : "I couldn't save that memory. Please try again.";
+
+            addMessage("Sophia", reply, "sophia");
+        }
+
+        refreshDashboard();
+        status.textContent = "Sophia is ready.";
+        finishMessage();
+        return;
+    }
+
+    // RECALL MEMORY
+
+    if (command === "memory") {
+
+        const memories = loadMemories();
+
+        const reply = memories.length
+            ? "Here is what I remember:\n" +
+              memories.map((memory, index) =>
+                  (index + 1) + ". " + memory
+              ).join("\n")
+            : "I haven't saved any memories yet.";
+
+        addMessage("Sophia", reply, "sophia");
+
+        status.textContent = "Sophia is ready.";
+        finishMessage();
+        return;
+    }
+
+    // FORGET MEMORY
+
+    if (command.startsWith("forget:")) {
+
+        const target = message.slice(7).trim();
+
+        if (!target) {
+            addMessage(
+                "Sophia",
+                "Please tell me which memory you'd like me to forget.",
+                "sophia"
+            );
+        } else {
+            const result = forgetMemory(target);
+
+            const reply = result === "removed"
+                ? "I've removed that memory."
+                : result === "not_found"
+                    ? "I couldn't find that exact memory."
+                    : "I couldn't update that memory. Please try again.";
+
+            addMessage("Sophia", reply, "sophia");
+        }
+
+        refreshDashboard();
+        status.textContent = "Sophia is ready.";
+        finishMessage();
+        return;
+    }
+
+    // MEMORY PERMISSION
+
+    if (pendingMemoryCandidate) {
+
+        const positiveAnswers = [
+            "yes", "yes please", "yes remember that",
+            "please remember that", "save it", "save that",
+            "remember it"
+        ];
+
+        const negativeAnswers = [
+            "no", "no thanks", "no thank you",
+            "don't remember", "do not remember",
+            "don't save it", "do not save it", "cancel"
+        ];
+
+        if (positiveAnswers.includes(command)) {
+
+            const memory = pendingMemoryCandidate;
+            pendingMemoryCandidate = null;
+
+            const result = saveMemory(memory);
+
+            const reply = result === "saved"
+                ? "Of course. I'll remember that: " + memory
+                : result === "exists"
+                    ? "I already have that saved in my memory."
+                    : "I couldn't save that memory. Please try again.";
+
+            addMessage("Sophia", reply, "sophia");
+            refreshDashboard();
+            status.textContent = "Sophia is ready.";
+            finishMessage();
+            return;
+        }
+
+        if (negativeAnswers.includes(command)) {
+
+            pendingMemoryCandidate = null;
+
+            addMessage(
+                "Sophia",
+                "No problem. I won't save it.",
+                "sophia"
+            );
+
+            status.textContent = "Sophia is ready.";
+            finishMessage();
+            return;
+        }
+
+        pendingMemoryCandidate = null;
+    }
+
+    // WIKIPEDIA SEARCH
+
+    if (command.startsWith("search:")) {
+
+        const query = message.slice(7).trim();
+
+        if (!query) {
+            addMessage(
+                "Sophia",
+                "What would you like me to research?",
+                "sophia"
+            );
+
+            status.textContent = "Sophia is ready.";
+            finishMessage();
+            return;
+        }
+
+        try {
+            await researchWikipedia(query);
+
+        } catch (error) {
+
+            console.error("Research error:", error);
+
+            addMessage(
+                "Sophia",
+                "I couldn't complete the research. The technical reason was: " +
+                error.message,
+                "sophia"
+            );
+        }
+
+        status.textContent = "Sophia is ready.";
+        finishMessage();
+        return;
+    }
+
+    // REMOTE AI CONVERSATION
+
+    const replyBody = addMessage(
+        "Sophia",
+        "Thinking...",
+        "sophia"
+    );
+
+    status.textContent = "Sophia is contacting her remote intelligence...";
+
+    let userMessageAdded = false;
+
+    try {
+
+        messages.push({
+            role: "user",
+            content: message
+        });
+
+        userMessageAdded = true;
+
+        const memories = loadMemories();
+        const systemPrompt = buildSystemPrompt(memories);
+
+        const recentMessages = [
+            {
+                role: "system",
+                content: systemPrompt
+            },
+            ...messages.slice(-6)
+        ];
+
+        if (!turnstileToken) {
+            throw new Error("Please complete the security check before sending a message.");
+        }
+
+        const response = await fetch(WORKER_URL, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                messages: recentMessages,
+                turnstileToken: turnstileToken
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(
+                data.error || "Remote service returned HTTP " + response.status
+            );
+        }
+
+        const replyText = [data.response, data.output_text, data.text]
+            .find(value => typeof value === "string" && value.trim());
+
+        if (!replyText) {
+            throw new Error("The remote service returned an empty or unexpected response.");
+        }
+
+        const reply = replyText.trim();
+
+        replyBody.textContent = reply;
+
+        messages.push({
+            role: "assistant",
+            content: reply
+        });
+
+        const proposedMemory =
+            suggestMemoryFromMessage(message);
+
+        if (proposedMemory) {
+
+            pendingMemoryCandidate = proposedMemory;
+
+            addMessage(
+                "Sophia",
+                "That sounds useful to remember. Would you like me to save this?\n\n" +
+                proposedMemory +
+                "\n\nPlease reply yes or no.",
+                "sophia"
+            );
+        }
+
+        status.textContent = "Sophia is ready.";
+
+    } catch (error) {
+
+        console.error("Remote intelligence error:", error);
+
+        if (userMessageAdded) {
+            messages.pop();
+        }
+
+        replyBody.textContent =
+            "I couldn't reach my remote intelligence service. " +
+            error.message;
+
+        status.textContent =
+            "There was a problem contacting Sophia's remote intelligence.";
+    }
+
+    if (window.turnstile && turnstileWidgetId !== null) {
+        window.turnstile.reset(turnstileWidgetId);
+    }
+
+    turnstileToken = null;
+
+    finishMessage();
+}
+
+// BUTTON AND KEYBOARD CONTROLS
+
+sendButton.addEventListener("click", sendMessage);
+
+input.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+        sendMessage();
+    }
+});
+
+</script>
+
+<script>
+(() => {
+    const WORKER_URL =
+        "https://sophia-intelligence.kjope-436.workers.dev";
+
+    const SESSION_KEY = "sophia_github_session";
+
+    // Recover the session returned by GitHub after sign-in.
+    const fragment = window.location.hash;
+
+    if (fragment.includes("sophia_session=")) {
+        const params = new URLSearchParams(fragment.substring(1));
+        const session = params.get("sophia_session");
+        const login = params.get("sophia_login");
+
+        if (session && login) {
+            sessionStorage.setItem(SESSION_KEY, session);
+            sessionStorage.setItem("sophia_github_login", login);
+        }
+
+        history.replaceState(
+            null,
+            "",
+            window.location.pathname + window.location.search
+        );
+    }
+
+    if (fragment.includes("sophia_auth_error=")) {
+        const params = new URLSearchParams(fragment.substring(1));
+        alert("Sophia GitHub sign-in: " +
+            (params.get("sophia_auth_error") || "Unknown error"));
+
+        history.replaceState(
+            null,
+            "",
+            window.location.pathname + window.location.search
+        );
+    }
+
+    // Create a GitHub connection button.
+    const button = document.createElement("button");
+
+    button.textContent = "Connect GitHub";
+    button.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+        padding: 12px 18px;
+        border: 1px solid #7186b8;
+        border-radius: 10px;
+        background: #263653;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+    `;
+
+    button.onclick = () => {
+        window.location.href = WORKER_URL + "/github/login";
+    };
+
+    document.body.appendChild(button);
+
+    // Allow Sophia's code to request an approved repository file.
+    window.sophiaReadGitHubFile = async (repo, path) => {
+        const session = sessionStorage.getItem(SESSION_KEY);
+
+        if (!session) {
+            throw new Error("Please connect GitHub first.");
+        }
+
+        const response = await fetch(WORKER_URL + "/github/read", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + session
+            },
+            body: JSON.stringify({ repo, path })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || "GitHub reading failed.");
+        }
+
+        return result.content;
+    };
+
+    console.log("Sophia GitHub connection module loaded.");
+})();
+</script>
+
+</body>
+</html>
