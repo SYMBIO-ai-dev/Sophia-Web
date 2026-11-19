@@ -17,6 +17,8 @@ button:hover{background:#829ff0}button:disabled,input:disabled{opacity:.5;cursor
 .secondary-button{background:#344665}#dashboard{margin-top:22px;padding:20px;background:#101a2d;border:1px solid #50658e;border-radius:12px;text-align:left}
 #dashboard h2,#dashboard h3{color:#9bbcff}#memoryList{overflow-wrap:anywhere}#memoryList li{margin-bottom:10px}
 .small-note{color:#aab7d0;font-size:12px}
+#githubStatus{position:fixed;bottom:20px;right:20px;z-index:9999;padding:12px 18px;border:1px solid #7186b8;border-radius:10px;background:#263653;color:white;font-size:14px;cursor:pointer}
+#githubStatus.connected{background:#24543d;border-color:#5a9b75}
 </style>
 </head>
 <body>
@@ -85,7 +87,7 @@ ANSWER QUALITY: Answer the actual question directly. Use simple explanations whe
 FEEDBACK: Treat comments about your answers as guidance and feedback. Acknowledge feedback briefly and apply it in future replies. Do not ask whether ordinary feedback should be saved as a memory. Do not turn praise, criticism, corrections or suggestions into memory requests. Only discuss saving a memory when Keith explicitly asks you to remember or save something.
 CAPABILITIES: Only claim abilities and tools that are actually available. You cannot control smart-home devices without an integration.
 MEMORY: Use saved memories supplied with your conversation when relevant. Never invent memories. Never claim to have saved something unless confirmed.
-IDENTITY: You are an artificial intelligence, not a human being. Do not claim human feelings or real-life experiences. Your founding identity is supplied separately through your Identity Core. Respect and follow its principles.`;
+IDENTITY: You are an artificial intelligence, not a human being. Do not claim human feelings or real-life experiences. Your founding identity is supplied separately through your Identity Core.`;
 
 async function loadIdentityCore(){
  status.textContent="Loading Sophia's Identity Core...";
@@ -235,15 +237,23 @@ async function sendMessage(){
 sendButton.addEventListener("click",sendMessage);
 input.addEventListener("keydown",event=>{if(event.key==="Enter")sendMessage();});
 </script>
+
 <script>
 (()=>{
  const WORKER_URL="https://sophia-intelligence.kjope-436.workers.dev";
  const SESSION_KEY="sophia_github_session";
+ const LOGIN_KEY="sophia_github_login";
+
+ // The callback returns these values in the URL fragment.
  const fragment=window.location.hash;
  if(fragment.includes("sophia_session=")){
   const params=new URLSearchParams(fragment.substring(1));
   const session=params.get("sophia_session"),login=params.get("sophia_login");
-  if(session&&login){sessionStorage.setItem(SESSION_KEY,session);sessionStorage.setItem("sophia_github_login",login);}
+  if(session&&login){
+   // localStorage is shared by the installed app and Chrome for this website.
+   localStorage.setItem(SESSION_KEY,session);
+   localStorage.setItem(LOGIN_KEY,login);
+  }
   history.replaceState(null,"",window.location.pathname+window.location.search);
  }
  if(fragment.includes("sophia_auth_error=")){
@@ -251,15 +261,40 @@ input.addEventListener("keydown",event=>{if(event.key==="Enter")sendMessage();})
   alert("Sophia GitHub sign-in: "+(params.get("sophia_auth_error")||"Unknown error"));
   history.replaceState(null,"",window.location.pathname+window.location.search);
  }
+
  const button=document.createElement("button");
- button.textContent="Connect GitHub";
- button.style.cssText="position:fixed;bottom:20px;right:20px;z-index:9999;padding:12px 18px;border:1px solid #7186b8;border-radius:10px;background:#263653;color:white;cursor:pointer;font-size:14px;";
- button.onclick=()=>{window.location.href=WORKER_URL+"/github/login";};
+ button.id="githubStatus";
+ function refreshGitHubButton(){
+  const login=localStorage.getItem(LOGIN_KEY);
+  const session=localStorage.getItem(SESSION_KEY);
+  if(session&&login){
+   button.textContent="GitHub connected: "+login;
+   button.classList.add("connected");
+   button.title="GitHub is connected. Click to reconnect if needed.";
+  }else{
+   button.textContent="Connect GitHub";
+   button.classList.remove("connected");
+   button.title="Connect Sophia to GitHub.";
+  }
+ }
+ refreshGitHubButton();
+ button.onclick=()=>{
+  window.location.href=WORKER_URL+"/github/login";
+ };
  document.body.appendChild(button);
+ window.addEventListener("storage",refreshGitHubButton);
+
  window.sophiaReadGitHubFile=async(repo,path)=>{
-  const session=sessionStorage.getItem(SESSION_KEY);if(!session)throw new Error("Please connect GitHub first.");
-  const response=await fetch(WORKER_URL+"/github/read",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session},body:JSON.stringify({repo,path})});
-  const result=await response.json();if(!response.ok)throw new Error(result.error||"GitHub reading failed.");return result.content;
+  const session=localStorage.getItem(SESSION_KEY);
+  if(!session)throw new Error("Please connect GitHub first.");
+  const response=await fetch(WORKER_URL+"/github/read",{
+   method:"POST",
+   headers:{"Content-Type":"application/json","Authorization":"Bearer "+session},
+   body:JSON.stringify({repo,path})
+  });
+  const result=await response.json();
+  if(!response.ok)throw new Error(result.error||"GitHub reading failed.");
+  return result.content;
  };
  console.log("Sophia GitHub connection module loaded.");
 })();
