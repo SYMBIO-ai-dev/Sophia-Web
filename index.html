@@ -19,6 +19,9 @@ button:hover{background:#829ff0}button:disabled,input:disabled{opacity:.5;cursor
 .small-note{color:#aab7d0;font-size:12px}
 #githubStatus{position:fixed;bottom:20px;right:20px;z-index:9999;padding:12px 18px;border:1px solid #7186b8;border-radius:10px;background:#263653;color:white;font-size:14px;cursor:pointer}
 #githubStatus.connected{background:#24543d;border-color:#5a9b75}
+#githubTestResult{margin-top:12px;padding:12px;border-radius:9px;background:#1c2740;color:#aab7d0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;}
+#githubTestResult.success{border:1px solid #5a9b75;color:#b9e6c9}
+#githubTestResult.failure{border:1px solid #b86a6a;color:#ffc2c2}
 </style>
 </head>
 <body>
@@ -41,6 +44,10 @@ button:hover{background:#829ff0}button:disabled,input:disabled{opacity:.5;cursor
 <h3>What we're working towards</h3>
 <ul><li>Connecting Sophia to remote intelligence.</li><li>Improving Sophia's answers and reliability.</li><li>Developing internet research abilities.</li><li>Building voice interaction.</li><li>Exploring safe smart-home integration.</li></ul>
 <h3>Sophia's saved memories</h3><p class="small-note">These are memories saved in this browser.</p><ol id="memoryList"></ol>
+<h3>GitHub file access</h3>
+<p class="small-note">Test whether Sophia can read a file from her own GitHub repository.</p>
+<button id="githubTestButton" class="secondary-button" type="button">Test GitHub Access</button>
+<div id="githubTestResult" role="status" aria-live="polite">The GitHub file-reading test has not been run yet.</div>
 <p class="small-note">Our project is designed around free tools and services. Free usage limits apply.</p>
 </section>
 </div>
@@ -243,25 +250,6 @@ input.addEventListener("keydown",event=>{if(event.key==="Enter")sendMessage();})
  const WORKER_URL="https://sophia-intelligence.kjope-436.workers.dev";
  const SESSION_KEY="sophia_github_session";
  const LOGIN_KEY="sophia_github_login";
-
- // The callback returns these values in the URL fragment.
- const fragment=window.location.hash;
- if(fragment.includes("sophia_session=")){
-  const params=new URLSearchParams(fragment.substring(1));
-  const session=params.get("sophia_session"),login=params.get("sophia_login");
-  if(session&&login){
-   // localStorage is shared by the installed app and Chrome for this website.
-   localStorage.setItem(SESSION_KEY,session);
-   localStorage.setItem(LOGIN_KEY,login);
-  }
-  history.replaceState(null,"",window.location.pathname+window.location.search);
- }
- if(fragment.includes("sophia_auth_error=")){
-  const params=new URLSearchParams(fragment.substring(1));
-  alert("Sophia GitHub sign-in: "+(params.get("sophia_auth_error")||"Unknown error"));
-  history.replaceState(null,"",window.location.pathname+window.location.search);
- }
-
  const button=document.createElement("button");
  button.id="githubStatus";
  function refreshGitHubButton(){
@@ -277,10 +265,21 @@ input.addEventListener("keydown",event=>{if(event.key==="Enter")sendMessage();})
    button.title="Connect Sophia to GitHub.";
   }
  }
+ // Process the OAuth callback before showing the connection status.
+ const fragment=window.location.hash;
+ if(fragment.includes("sophia_session=")){
+  const params=new URLSearchParams(fragment.substring(1));
+  const session=params.get("sophia_session"),login=params.get("sophia_login");
+  if(session&&login){localStorage.setItem(SESSION_KEY,session);localStorage.setItem(LOGIN_KEY,login);}
+  history.replaceState(null,"",window.location.pathname+window.location.search);
+ }
+ if(fragment.includes("sophia_auth_error=")){
+  const params=new URLSearchParams(fragment.substring(1));
+  alert("Sophia GitHub sign-in: "+(params.get("sophia_auth_error")||"Unknown error"));
+  history.replaceState(null,"",window.location.pathname+window.location.search);
+ }
  refreshGitHubButton();
- button.onclick=()=>{
-  window.location.href=WORKER_URL+"/github/login";
- };
+ button.onclick=()=>{window.location.href=WORKER_URL+"/github/login";};
  document.body.appendChild(button);
  window.addEventListener("storage",refreshGitHubButton);
 
@@ -292,11 +291,34 @@ input.addEventListener("keydown",event=>{if(event.key==="Enter")sendMessage();})
    headers:{"Content-Type":"application/json","Authorization":"Bearer "+session},
    body:JSON.stringify({repo,path})
   });
-  const result=await response.json();
-  if(!response.ok)throw new Error(result.error||"GitHub reading failed.");
+  let result;
+  try{result=await response.json();}catch(e){throw new Error("The GitHub service returned an unreadable response (HTTP "+response.status+").");}
+  if(!response.ok)throw new Error(result.error||"GitHub reading failed (HTTP "+response.status+").");
+  if(typeof result.content!=="string")throw new Error("GitHub responded, but did not return file content in the expected format.");
   return result.content;
  };
- console.log("Sophia GitHub connection module loaded.");
+
+ // Run a real read request against Sophia's own repository and show a short result.
+ const testButton=document.getElementById("githubTestButton");
+ const testResult=document.getElementById("githubTestResult");
+ if(testButton&&testResult){
+  testButton.addEventListener("click",async()=>{
+   testButton.disabled=true;
+   testResult.className="";
+   testResult.textContent="Testing GitHub access... Sophia is requesting index.html from her repository.";
+   try{
+    const content=await window.sophiaReadGitHubFile("SYMBIO-ai-dev/Sophia-Web","index.html");
+    if(!content.trim())throw new Error("GitHub returned an empty file.");
+    testResult.className="success";
+    testResult.textContent="SUCCESS — Sophia read index.html from SYMBIO-ai-dev/Sophia-Web.\n\nCharacters received: "+content.length+"\n\nBeginning of file:\n"+content.slice(0,350);
+   }catch(error){
+    console.error("GitHub file access test failed:",error);
+    testResult.className="failure";
+    testResult.textContent="TEST FAILED — "+error.message;
+   }finally{testButton.disabled=false;}
+  });
+ }
+ console.log("Sophia GitHub connection and file test module loaded.");
 })();
 </script>
 </body>
