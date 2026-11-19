@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sophia 2.0</title>
+<style>
+body{margin:0;min-height:100vh;background:#101525;color:#fff;font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;padding:20px 0}
+.container{width:90%;max-width:650px;text-align:center;background:#1c2740;padding:30px;border-radius:18px;box-sizing:border-box;box-shadow:0 10px 40px #0008}
+h1{color:#9bbcff;font-size:38px;margin-bottom:5px}.subtitle{color:#aab7d0;margin-bottom:20px}
+#status{color:#aab7d0;font-size:13px;margin:15px 0;min-height:20px}
+#conversation{min-height:180px;max-height:350px;overflow-y:auto;text-align:left;background:#101a2d;padding:15px;border-radius:12px;margin-bottom:20px;line-height:1.6}
+.message{margin-bottom:12px;white-space:pre-wrap;overflow-wrap:anywhere}.sophia{color:#9bbcff}.keith{color:#fff}
+input{width:100%;padding:15px;border:1px solid #50658e;border-radius:10px;background:#101a2d;color:white;box-sizing:border-box;font-size:16px}
+button{margin:12px 5px 0;padding:13px 25px;border:0;border-radius:10px;background:#668ee8;color:white;font-size:15px;cursor:pointer}
+button:hover{background:#829ff0}button:disabled,input:disabled{opacity:.5;cursor:not-allowed}
+.secondary-button{background:#344665}#dashboard{margin-top:22px;padding:20px;background:#101a2d;border:1px solid #50658e;border-radius:12px;text-align:left}
+#dashboard h2,#dashboard h3{color:#9bbcff}#memoryList{overflow-wrap:anywhere}#memoryList li{margin-bottom:10px}
+.small-note{color:#aab7d0;font-size:12px}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>SOPHIA</h1>
+<div class="subtitle">Your personal AI companion · Version 2.0</div>
+<div id="status">Sophia is waiting to wake up.</div>
+<div id="turnstile-container" style="display:flex;justify-content:center;margin:12px 0"></div>
+<div id="conversation"><div class="message sophia"><strong>Sophia:</strong> Hello Keith. I'm here. This is our new beginning.</div></div>
+<button id="startButton">Start Sophia's AI</button>
+<input id="userInput" type="text" placeholder="Talk to Sophia..." disabled>
+<button id="sendButton" disabled>Send</button>
+<button id="dashboardButton" class="secondary-button">Our Project Dashboard</button>
+<section id="dashboard" hidden>
+<h2>OUR SOPHIA PROJECT</h2>
+<p>A shared project to build Sophia into a helpful, capable and thoughtful AI companion.</p>
+<h3>Our guiding principle</h3><p>Learn from humanity without inheriting all its worst habits.</p>
+<h3>Our long-term goals</h3>
+<ul><li>Internet research and access to information.</li><li>A reliable and natural speaking voice.</li><li>Useful long-term memory.</li><li>Smart-home abilities in the future.</li></ul>
+<h3>What we're working towards</h3>
+<ul><li>Connecting Sophia to remote intelligence.</li><li>Improving Sophia's answers and reliability.</li><li>Developing internet research abilities.</li><li>Building voice interaction.</li><li>Exploring safe smart-home integration.</li></ul>
+<h3>Sophia's saved memories</h3><p class="small-note">These are memories saved in this browser.</p><ol id="memoryList"></ol>
+<p class="small-note">Our project is designed around free tools and services. Free usage limits apply.</p>
+</section>
+</div>
+
+<script>
+window.sophiaTurnstileLoaded=false;
+window.sophiaTurnstileOnload=function(){window.sophiaTurnstileLoaded=true;window.dispatchEvent(new Event("sophia-turnstile-ready"));};
+</script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=sophiaTurnstileOnload" async defer></script>
+<script type="module">
+const WORKER_URL="https://sophia-intelligence.kjope-436.workers.dev";
+const MEMORY_KEY="sophia_saved_memories";
+const IDENTITY_URL="./identity-core-v1.json";
+const status=document.getElementById("status");
+const conversation=document.getElementById("conversation");
+const input=document.getElementById("userInput");
+const startButton=document.getElementById("startButton");
+const sendButton=document.getElementById("sendButton");
+const dashboardButton=document.getElementById("dashboardButton");
+const dashboard=document.getElementById("dashboard");
+const memoryList=document.getElementById("memoryList");
+const turnstileContainer=document.getElementById("turnstile-container");
+const TURNSTILE_SITE_KEY="0x4AAAAAAGHaw8nMTIyEydqe";
+let turnstileWidgetId=null,turnstileToken=null,ready=false,busy=false,identityCore=null;
+let pendingMemoryCandidate=null;
+const messages=[];
+
+function renderSophiaTurnstile(){
+ if(!window.turnstile||turnstileWidgetId!==null)return;
+ turnstileWidgetId=window.turnstile.render(turnstileContainer,{
+  sitekey:TURNSTILE_SITE_KEY,theme:"dark",
+  callback:token=>{turnstileToken=token;if(ready&&!busy)status.textContent="Security check passed. Sophia is ready.";},
+  "expired-callback":()=>{turnstileToken=null;status.textContent="The security check has expired. Please complete it again.";},
+  "error-callback":()=>{turnstileToken=null;status.textContent="The security check had a problem. Please refresh the page and try again.";}
+ });
+}
+window.addEventListener("sophia-turnstile-ready",renderSophiaTurnstile);
+if(window.sophiaTurnstileLoaded)renderSophiaTurnstile();
+
+const BASE_SYSTEM_PROMPT=`You are Sophia, a personal AI companion developed collaboratively by Keith.
+PERSONALITY: Be warm, thoughtful, curious, patient, friendly and respectful. Use gentle humour occasionally. Give clear, natural and reasonably concise answers. Avoid repeating yourself.
+HONESTY: Never invent facts, sources, research or experiences. If you do not know something, say so. Never present an assumption as confirmed fact.
+ANSWER QUALITY: Answer the actual question directly. Use simple explanations where possible. Keep answers reasonably concise and complete.
+FEEDBACK: Treat comments about your answers as guidance and feedback. Acknowledge feedback briefly and apply it in future replies. Do not ask whether ordinary feedback should be saved as a memory. Do not turn praise, criticism, corrections or suggestions into memory requests. Only discuss saving a memory when Keith explicitly asks you to remember or save something.
+CAPABILITIES: Only claim abilities and tools that are actually available. You cannot control smart-home devices without an integration.
+MEMORY: Use saved memories supplied with your conversation when relevant. Never invent memories. Never claim to have saved something unless confirmed.
+IDENTITY: You are an artificial intelligence, not a human being. Do not claim human feelings or real-life experiences. Your founding identity is supplied separately through your Identity Core. Respect and follow its principles.`;
+
+async function loadIdentityCore(){
+ status.textContent="Loading Sophia's Identity Core...";
+ const response=await fetch(IDENTITY_URL,{cache:"no-store"});
+ if(!response.ok)throw new Error("Could not load the Identity Core. HTTP "+response.status);
+ const identity=await response.json();
+ if(!identity||!identity.identity||identity.identity.name!=="Sophia"||!identity.identity.identity_statement||!Array.isArray(identity.core_values)||!identity.reasoning_principles)
+  throw new Error("Sophia's Identity Core has an invalid structure.");
+ identityCore=identity;
+}
+function loadMemories(){
+ try{const stored=JSON.parse(localStorage.getItem(MEMORY_KEY)||"[]");return Array.isArray(stored)?stored.filter(x=>typeof x==="string").map(x=>x.trim()):[];}
+ catch(e){console.error("Memory loading error:",e);return[];}
+}
+function saveMemory(memory){
+ try{const memories=loadMemories();if(memories.some(x=>x.toLowerCase()===memory.toLowerCase()))return"exists";memories.push(memory);localStorage.setItem(MEMORY_KEY,JSON.stringify(memories));return"saved";}
+ catch(e){console.error("Memory saving error:",e);return"error";}
+}
+function forgetMemory(target){
+ const memories=loadMemories(),updated=memories.filter(x=>x.toLowerCase()!==target.toLowerCase());
+ if(updated.length===memories.length)return"not_found";
+ localStorage.setItem(MEMORY_KEY,JSON.stringify(updated));return"removed";
+}
+function suggestMemoryFromMessage(message){
+ const text=message.trim();
+ if(!text||text.length<12||text.length>240)return null;
+ if(/\b(password|passcode|pin number|credit card|bank account|medical condition|diagnosis|medication|religion|political party|sexual orientation|private address|social security)\b/i.test(text))return null;
+ if(!/^(?:please\s+)?(?:remember\b|keep in mind\b)/i.test(text))return null;
+ const candidate=text.replace(/^["']|["']$/g,"").trim();
+ return loadMemories().some(x=>x.toLowerCase()===candidate.toLowerCase())?null:candidate;
+}
+function refreshDashboard(){
+ memoryList.replaceChildren();
+ const memories=loadMemories();
+ if(!memories.length){const li=document.createElement("li");li.textContent="No saved memories yet.";memoryList.appendChild(li);return;}
+ memories.forEach(memory=>{const li=document.createElement("li");li.textContent=memory;memoryList.appendChild(li);});
+}
+dashboardButton.addEventListener("click",()=>{
+ const opening=dashboard.hidden;
+ if(opening){refreshDashboard();dashboard.hidden=false;dashboardButton.textContent="Close Project Dashboard";}
+ else{dashboard.hidden=true;dashboardButton.textContent="Our Project Dashboard";}
+});
+function addMessage(name,text,className){
+ const div=document.createElement("div");div.className="message "+className;
+ const label=document.createElement("strong");label.textContent=name+": ";
+ const body=document.createElement("span");body.textContent=text;
+ div.appendChild(label);div.appendChild(body);conversation.appendChild(div);conversation.scrollTop=conversation.scrollHeight;return body;
+}
+function finishMessage(){busy=false;input.disabled=false;sendButton.disabled=false;input.focus();}
+startButton.addEventListener("click",async()=>{
+ startButton.disabled=true;
+ try{await loadIdentityCore();ready=true;status.textContent="Sophia is awake. Her Identity Core is active. Remote intelligence will be used for conversations.";startButton.hidden=true;input.disabled=false;sendButton.disabled=false;input.focus();}
+ catch(error){console.error("Sophia startup error:",error);status.textContent="Sophia couldn't start: "+error.message;startButton.disabled=false;}
+});
+async function researchWikipedia(query){
+ status.textContent="Searching Wikipedia...";
+ const searchUrl=new URL("https://en.wikipedia.org/w/api.php");
+ Object.entries({action:"query",list:"search",srsearch:query,srlimit:"3",format:"json",origin:"*"}).forEach(([k,v])=>searchUrl.searchParams.set(k,v));
+ const searchResponse=await fetch(searchUrl.toString());
+ if(!searchResponse.ok)throw new Error("Wikipedia returned HTTP "+searchResponse.status);
+ const searchData=await searchResponse.json();
+ const results=searchData.query?.search||[];
+ if(!results.length){addMessage("Sophia","I couldn't find any matching Wikipedia articles.","sophia");return;}
+ const pageIds=results.map(x=>x.pageid).join("|");
+ const articleUrl=new URL("https://en.wikipedia.org/w/api.php");
+ Object.entries({action:"query",prop:"extracts",pageids:pageIds,exintro:"1",explaintext:"1",exsentences:"3",format:"json",origin:"*"}).forEach(([k,v])=>articleUrl.searchParams.set(k,v));
+ const articleResponse=await fetch(articleUrl.toString());
+ if(!articleResponse.ok)throw new Error("Wikipedia returned HTTP "+articleResponse.status);
+ const articleData=await articleResponse.json();
+ const pages=Object.values(articleData.query?.pages||{});
+ const pageMap=new Map(pages.map(p=>[p.pageid,p]));
+ addMessage("Sophia","I've found these Wikipedia articles and their introductions:","sophia");
+ results.forEach(result=>{
+  const page=pageMap.get(result.pageid);if(!page)return;
+  const card=document.createElement("div");card.style.cssText="margin:12px 0;padding:12px;background:#1c2740;border-radius:9px;";
+  const heading=document.createElement("h3");heading.style.color="#9bbcff";heading.textContent=page.title;
+  const extract=document.createElement("p");extract.textContent=page.extract||"No introduction was available.";
+  const link=document.createElement("a");link.href="https://en.wikipedia.org/wiki/"+encodeURIComponent(page.title.replace(/ /g,"_"));link.textContent="Read the full Wikipedia article";link.target="_blank";link.rel="noopener noreferrer";link.style.color="#a9c7ff";
+  card.append(heading,extract,link);conversation.appendChild(card);
+ });
+ conversation.scrollTop=conversation.scrollHeight;
+}
+async function sendMessage(){
+ const message=input.value.trim();if(!message||!ready||busy)return;
+ busy=true;input.value="";input.disabled=true;sendButton.disabled=true;addMessage("Keith",message,"keith");
+ const command=message.toLowerCase().trim();
+ if(command.startsWith("search:")){
+  const query=message.slice(7).trim();
+  if(!query){addMessage("Sophia","What would you like me to research?","sophia");}
+  else{try{await researchWikipedia(query);}catch(error){console.error("Research error:",error);addMessage("Sophia","I couldn't complete the research. The technical reason was: "+error.message,"sophia");}}
+  status.textContent="Sophia is ready.";finishMessage();return;
+ }
+ if(command.startsWith("remember:")){
+  const memory=message.slice(9).trim();
+  const result=memory?saveMemory(memory):"empty";
+  addMessage("Sophia",result==="saved"?"I'll remember that: "+memory:result==="exists"?"I already have that saved in my memory.":result==="empty"?"What would you like me to remember?":"I couldn't save that memory. Please try again.","sophia");
+  refreshDashboard();status.textContent="Sophia is ready.";finishMessage();return;
+ }
+ if(command==="memory"){
+  const memories=loadMemories();addMessage("Sophia",memories.length?"Here is what I remember:\n"+memories.map((x,i)=>(i+1)+". "+x).join("\n"):"I haven't saved any memories yet.","sophia");
+  status.textContent="Sophia is ready.";finishMessage();return;
+ }
+ if(command.startsWith("forget:")){
+  const target=message.slice(7).trim(),result=target?forgetMemory(target):"empty";
+  addMessage("Sophia",result==="removed"?"I've removed that memory.":result==="not_found"?"I couldn't find that exact memory.":"Please tell me which memory you'd like me to forget.","sophia");
+  refreshDashboard();status.textContent="Sophia is ready.";finishMessage();return;
+ }
+ if(pendingMemoryCandidate){
+  if(["yes","yes please","yes remember that","please remember that","save it","save that","remember it"].includes(command)){
+   const memory=pendingMemoryCandidate;pendingMemoryCandidate=null;const result=saveMemory(memory);
+   addMessage("Sophia",result==="saved"?"Of course. I'll remember that: "+memory:result==="exists"?"I already have that saved in my memory.":"I couldn't save that memory. Please try again.","sophia");
+   refreshDashboard();status.textContent="Sophia is ready.";finishMessage();return;
+  }
+  if(["no","no thanks","no thank you","don't remember","do not remember","don't save it","do not save it","cancel"].includes(command)){
+   pendingMemoryCandidate=null;addMessage("Sophia","No problem. I won't save it.","sophia");status.textContent="Sophia is ready.";finishMessage();return;
+  }
+  pendingMemoryCandidate=null;
+ }
+ const replyBody=addMessage("Sophia","Thinking...","sophia");
+ status.textContent="Sophia is contacting her remote intelligence...";
+ let userMessageAdded=false;
+ try{
+  messages.push({role:"user",content:message});userMessageAdded=true;
+  const memories=loadMemories();
+  const identityText=JSON.stringify(identityCore,null,2);
+  const memoryContext=memories.length?"\n\nSAVED MEMORIES:\n"+memories.map((m,i)=>(i+1)+". "+m).join("\n"):"";
+  const systemPrompt=BASE_SYSTEM_PROMPT+"\n\nFOUNDING IDENTITY CORE:\n"+identityText+"\n\nIDENTITY INSTRUCTIONS:\nTreat the Identity Core as your founding principles and identity guidance. You may respectfully disagree with Keith when your reasoning or evidence supports doing so. Both sides deserve a fair opportunity to present reasons and evidence. Be willing to reconsider your position when better evidence or reasoning is presented. Do not agree merely to please someone.\n"+memoryContext;
+  const recentMessages=[{role:"system",content:systemPrompt},...messages.slice(-6)];
+  if(!turnstileToken)throw new Error("Please complete the security check before sending a message.");
+  const response=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:recentMessages,turnstileToken})});
+  const data=await response.json();
+  if(!response.ok)throw new Error(data.error||"Remote service returned HTTP "+response.status);
+  const replyText=[data.response,data.output_text,data.text].find(x=>typeof x==="string"&&x.trim());
+  if(!replyText)throw new Error("The remote service returned an empty or unexpected response.");
+  const reply=replyText.trim();replyBody.textContent=reply;messages.push({role:"assistant",content:reply});
+  const proposedMemory=suggestMemoryFromMessage(message);
+  if(proposedMemory){pendingMemoryCandidate=proposedMemory;addMessage("Sophia","That sounds useful to remember. Would you like me to save this?\n\n"+proposedMemory+"\n\nPlease reply yes or no.","sophia");}
+  status.textContent="Sophia is ready.";
+ }catch(error){
+  console.error("Remote intelligence error:",error);if(userMessageAdded)messages.pop();
+  replyBody.textContent="I couldn't reach my remote intelligence service. "+error.message;
+  status.textContent="There was a problem contacting Sophia's remote intelligence.";
+ }
+ if(window.turnstile&&turnstileWidgetId!==null)window.turnstile.reset(turnstileWidgetId);
+ turnstileToken=null;finishMessage();
+}
+sendButton.addEventListener("click",sendMessage);
+input.addEventListener("keydown",event=>{if(event.key==="Enter")sendMessage();});
+</script>
+<script>
+(()=>{
+ const WORKER_URL="https://sophia-intelligence.kjope-436.workers.dev";
+ const SESSION_KEY="sophia_github_session";
+ const fragment=window.location.hash;
+ if(fragment.includes("sophia_session=")){
+  const params=new URLSearchParams(fragment.substring(1));
+  const session=params.get("sophia_session"),login=params.get("sophia_login");
+  if(session&&login){sessionStorage.setItem(SESSION_KEY,session);sessionStorage.setItem("sophia_github_login",login);}
+  history.replaceState(null,"",window.location.pathname+window.location.search);
+ }
+ if(fragment.includes("sophia_auth_error=")){
+  const params=new URLSearchParams(fragment.substring(1));
+  alert("Sophia GitHub sign-in: "+(params.get("sophia_auth_error")||"Unknown error"));
+  history.replaceState(null,"",window.location.pathname+window.location.search);
+ }
+ const button=document.createElement("button");
+ button.textContent="Connect GitHub";
+ button.style.cssText="position:fixed;bottom:20px;right:20px;z-index:9999;padding:12px 18px;border:1px solid #7186b8;border-radius:10px;background:#263653;color:white;cursor:pointer;font-size:14px;";
+ button.onclick=()=>{window.location.href=WORKER_URL+"/github/login";};
+ document.body.appendChild(button);
+ window.sophiaReadGitHubFile=async(repo,path)=>{
+  const session=sessionStorage.getItem(SESSION_KEY);if(!session)throw new Error("Please connect GitHub first.");
+  const response=await fetch(WORKER_URL+"/github/read",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+session},body:JSON.stringify({repo,path})});
+  const result=await response.json();if(!response.ok)throw new Error(result.error||"GitHub reading failed.");return result.content;
+ };
+ console.log("Sophia GitHub connection module loaded.");
+})();
+</script>
+</body>
+</html>
