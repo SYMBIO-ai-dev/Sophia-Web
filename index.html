@@ -101,7 +101,7 @@
   <section class="view" id="view-chat">
     <div class="eyebrow">Conversation</div><h1>Chat with Sophia</h1><p>Ask me anything, share a thought or work through a question together.</p>
     <div class="panel"><div class="row" style="justify-content:space-between"><div><strong style="font-size:13px">Start Sophia's intelligence</strong><div class="muted">Her Identity Core and remote AI connection are used for chat.</div></div><button class="primary-button" id="startButton">Start Sophia</button></div><div class="turnstile-wrap" id="turnstile-container"></div><div class="status-line" id="status">Sophia is waiting to wake up.</div></div>
-    <div class="chat-shell"><div class="chat-head"><div><strong>✧ Sophia</strong><div class="small" id="chatSubstatus">Here with you</div></div><div class="row" style="gap:8px"><button class="soft-button" id="voiceToggle" type="button" aria-pressed="false" title="Use the voice already available in your browser. No paid speech service is used.">Voice: Off</button><span class="badge" id="chatReadyBadge">Not started</span></div></div><div class="chat-window" id="conversation" aria-live="polite"></div><div class="chat-compose"><input class="chat-input" id="userInput" type="text" placeholder="Start Sophia to begin…" disabled><button class="primary-button" id="sendButton" disabled>Send</button></div></div>
+    <div class="chat-shell"><div class="chat-head"><div><strong>✧ Sophia</strong><div class="small" id="chatSubstatus">Here with you</div></div><div class="row" style="gap:8px"><button class="soft-button" id="voiceToggle" type="button" aria-pressed="false" title="Turn Sophia's spoken replies on or off.">Voice: Off</button><button class="soft-button" id="listenToggle" type="button" aria-pressed="false" title="Start or stop a spoken conversation with Sophia.">Start conversation</button><span class="small" id="listeningStatus" aria-live="polite">Listening is off</span><span class="badge" id="chatReadyBadge">Not started</span></div></div><div class="chat-window" id="conversation" aria-live="polite"></div><div class="chat-compose"><input class="chat-input" id="userInput" type="text" placeholder="Start Sophia to begin…" disabled><button class="primary-button" id="sendButton" disabled>Send</button></div></div>
     <p class="small" style="margin-top:10px">Tip: Sophia may suggest useful things to remember during conversation. Nothing is saved unless you approve it. You can also type <strong>memory</strong> to review your saved memories.</p>
   </section>
 
@@ -197,12 +197,16 @@ let githubLogin=null;
 try{localStorage.removeItem("sophia_github_session");localStorage.removeItem("sophia_github_login");}catch{}
 const KEYS={journal:"sophia_journal_entries",ideas:"sophia_ideas",activity:"sophia_activity",theme:"sophia_theme"};
 const $=id=>document.getElementById(id);
-const status=$("status"),conversation=$("conversation"),input=$("userInput"),startButton=$("startButton"),sendButton=$("sendButton"),voiceToggle=$("voiceToggle");
+const status=$("status"),conversation=$("conversation"),input=$("userInput"),startButton=$("startButton"),sendButton=$("sendButton"),voiceToggle=$("voiceToggle"),listenToggle=$("listenToggle");
 const TURNSTILE_SITE_KEY="0x4AAAAAAGHaw8nMTIyEydqe";
 let turnstileWidgetId=null,turnstileToken=null,ready=false,starting=false,busy=false,identityCore=null,pendingMemoryCandidate=null;
 let visitorName="",visitorNameChosen=false;
 let speechEnabled=false;
 let preferredSpeechVoice=null;
+let speechRecognition=null;
+let listeningActive=false;
+let recognitionRestartTimer=null;
+let currentSpokenReply="";
 const messages=[];
 
 // Speech uses the browser's built-in speech engine only. No external TTS service or paid API is called.
@@ -217,12 +221,19 @@ function chooseSpeechVoice(){
     const lang=(voice.lang||"").toLowerCase();
     const name=(voice.name||"").toLowerCase();
     let points=0;
-    if(lang==="en-gb")points+=12;
-    else if(lang.startsWith("en-gb"))points+=11;
-    else if(lang.startsWith("en"))points+=5;
-    if(/female|woman|sonia|serena|libby|hazel|susan|samantha|aria|jenny|emma|olivia|amy|kate/.test(name))points+=4;
-    if(/google|natural/.test(name))points+=2;
-    if(/male|daniel|george|ryan/.test(name))points-=2;
+    // Strongly prefer voices explicitly identified as British English.
+    if(lang==="en-gb")points+=100;
+    else if(lang.startsWith("en-gb"))points+=95;
+    else if(/united kingdom|british|\buk\b/.test(name))points+=80;
+    // If no British voice exists, prefer another UK-adjacent English accent
+    // rather than silently choosing an American voice.
+    else if(lang.startsWith("en-ie"))points+=45;
+    else if(lang.startsWith("en-au"))points+=40;
+    else if(lang.startsWith("en-nz"))points+=35;
+    else if(lang.startsWith("en"))points+=10;
+    if(/sonia|serena|libby|hazel|susan|kate|female|woman/.test(name))points+=3;
+    if(/natural|neural|google|microsoft/.test(name))points+=4;
+    if(/united states|\bus\b|american/.test(name)||lang.startsWith("en-us"))points-=15;
     return points;
   };
   return voices.slice().sort((a,b)=>score(b)-score(a))[0]||null;
@@ -232,15 +243,107 @@ function speakSophia(text){
   const clean=String(text).replace(/\[\[SOPHIA_MEMORY:[\s\S]*?\]\]/gi,"").trim();
   if(!clean)return;
   window.speechSynthesis.cancel();
+  currentSpokenReply=clean;
   const utterance=new SpeechSynthesisUtterance(clean);
   preferredSpeechVoice=chooseSpeechVoice()||preferredSpeechVoice;
   if(preferredSpeechVoice)utterance.voice=preferredSpeechVoice;
   utterance.lang=preferredSpeechVoice?.lang||"en-GB";
-  utterance.rate=0.94;
-  utterance.pitch=1.08;
+  utterance.rate=0.88;
+  utterance.pitch=1.12;
   utterance.volume=1;
+  utterance.onstart=()=>{if(listeningActive)setListeningLabel("Listening — you can interrupt me");};
+  utterance.onend=()=>{setTimeout(()=>{if(currentSpokenReply===clean)currentSpokenReply="";},2200);if(listeningActive)setListeningLabel("Listening — speak whenever you're ready");};
+  utterance.onerror=()=>{currentSpokenReply="";};
   window.speechSynthesis.speak(utterance);
 }
+function setListeningLabel(message){
+  const label=$("listeningStatus");
+  if(label)label.textContent=message;
+}
+function normaliseSpeech(value){return String(value||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}
+function looksLikeSophiaEcho(transcript){
+  if(!currentSpokenReply)return false;
+  const heard=normaliseSpeech(transcript).split(" ").filter(Boolean);
+  const spoken=normaliseSpeech(currentSpokenReply).split(" ").filter(Boolean);
+  if(!heard.length||!spoken.length)return false;
+  const spokenSet=new Set(spoken);
+  const matching=heard.filter(word=>spokenSet.has(word)).length;
+  // Ignore likely fragments of Sophia's own loudspeaker output. If the visitor
+  // adds different words, treat that as an interruption and give them the floor.
+  return matching/heard.length>=0.78;
+}
+function stopSophiaSpeech(){
+  if("speechSynthesis" in window)window.speechSynthesis.cancel();
+  currentSpokenReply="";
+}
+function stopListening(){
+  listeningActive=false;
+  if(recognitionRestartTimer){clearTimeout(recognitionRestartTimer);recognitionRestartTimer=null;}
+  if(speechRecognition){try{speechRecognition.stop();}catch{}}
+  listenToggle.textContent="Start conversation";
+  listenToggle.setAttribute("aria-pressed","false");
+  setListeningLabel("Listening is off");
+}
+function startListening(){
+  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!Recognition){
+    setListeningLabel("This browser does not support hands-free speech recognition. You can still use Chromebook dictation.");
+    return;
+  }
+  if(!ready){setListeningLabel("Start Sophia before turning on listening.");return;}
+  if(!speechRecognition){
+    speechRecognition=new Recognition();
+    speechRecognition.continuous=true;
+    speechRecognition.interimResults=true;
+    speechRecognition.lang="en-GB";
+    speechRecognition.onresult=event=>{
+      if(!listeningActive||busy)return;
+      let transcript="",interim="";
+      for(let i=event.resultIndex;i<event.results.length;i++){
+        if(event.results[i].isFinal)transcript+=event.results[i][0].transcript+" ";
+        else interim+=event.results[i][0].transcript+" ";
+      }
+      interim=interim.trim();
+      transcript=transcript.trim();
+      // Stop Sophia as soon as the browser recognises words that do not sound
+      // like her own current reply; wait for the final transcript before sending.
+      if(interim&&window.speechSynthesis&&window.speechSynthesis.speaking&&!looksLikeSophiaEcho(interim))stopSophiaSpeech();
+      if(!transcript||looksLikeSophiaEcho(transcript))return;
+      if(window.speechSynthesis&&window.speechSynthesis.speaking)stopSophiaSpeech();
+      input.value=transcript;
+      sendMessage();
+    };
+    speechRecognition.onerror=event=>{
+      if(!listeningActive)return;
+      if(event.error==="not-allowed"||event.error==="service-not-allowed"){
+        stopListening();
+        setListeningLabel("Microphone permission was not granted. Allow microphone access in Chrome and try again.");
+      }else if(event.error!=="no-speech"&&event.error!=="aborted"){
+        setListeningLabel("Speech recognition paused. Trying to reconnect…");
+      }
+    };
+    speechRecognition.onend=()=>{
+      if(!listeningActive)return;
+      if(recognitionRestartTimer)clearTimeout(recognitionRestartTimer);
+      recognitionRestartTimer=setTimeout(()=>{
+        recognitionRestartTimer=null;
+        if(!listeningActive||!speechRecognition)return;
+        try{speechRecognition.start();}catch{}
+      },450);
+    };
+  }
+  listeningActive=true;
+  // Starting a conversation also enables spoken replies, so one click is enough.
+  speechEnabled=true;
+  voiceToggle.textContent="Voice: On";
+  voiceToggle.setAttribute("aria-pressed","true");
+  listenToggle.textContent="Stop listening";
+  listenToggle.setAttribute("aria-pressed","true");
+  setListeningLabel("Starting microphone…");
+  try{speechRecognition.start();setListeningLabel("Listening — speak whenever you're ready");}
+  catch(error){if(error.name==="InvalidStateError")setListeningLabel("Listening — speak whenever you're ready");else{stopListening();setListeningLabel("I couldn't start the microphone. Check Chrome's microphone permission and try again.");}}
+}
+listenToggle.addEventListener("click",()=>{if(listeningActive)stopListening();else startListening();});
 if(!("speechSynthesis" in window)){
   voiceToggle.disabled=true;
   voiceToggle.textContent="Voice unavailable";
@@ -261,7 +364,7 @@ function readArray(key){try{const value=JSON.parse(localStorage.getItem(key)||"[
 function writeArray(key,value){localStorage.setItem(key,JSON.stringify(value));}
 function logActivity(title,detail=""){const items=readArray(KEYS.activity);items.unshift({title,detail,time:new Date().toISOString()});writeArray(KEYS.activity,items.slice(0,60));renderActivity();}
 function setStatus(message){if(status)status.textContent=message;$ ("sideStatus").textContent=ready?"Ready":"Waiting to start";$ ("sideStatusDetail").textContent=message;$("homeAIStatus").textContent=ready?"Sophia is started and ready for a conversation.":"Not started yet. Start Sophia from the chat page.";$("chatSubstatus").textContent=message;$("chatReadyBadge").textContent=ready?"Ready":"Not started";}
-function navigate(view){document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id==="view-"+view));document.querySelectorAll(".nav button[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));const names={home:"Home",chat:"Chat with Sophia",memory:"Memory centre",abilities:"Abilities & tools",projects:"Projects",learning:"Learning journal",ideas:"Ideas workshop",activity:"Activity & progress",permissions:"Permissions & control",settings:"Settings"};$("breadcrumb").textContent="Your space / "+(names[view]||"Home");$("sidebar").classList.remove("open");if(view==="memory")renderMemories();if(view==="learning")renderJournal();if(view==="ideas")renderIdeas();if(view==="activity")renderActivity();if(view==="projects")refreshGitHubStatus();if(view==="chat")startSophia();}
+function navigate(view){if(view!=="chat"&&listeningActive)stopListening();document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id==="view-"+view));document.querySelectorAll(".nav button[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));const names={home:"Home",chat:"Chat with Sophia",memory:"Memory centre",abilities:"Abilities & tools",projects:"Projects",learning:"Learning journal",ideas:"Ideas workshop",activity:"Activity & progress",permissions:"Permissions & control",settings:"Settings"};$("breadcrumb").textContent="Your space / "+(names[view]||"Home");$("sidebar").classList.remove("open");if(view==="memory")renderMemories();if(view==="learning")renderJournal();if(view==="ideas")renderIdeas();if(view==="activity")renderActivity();if(view==="projects")refreshGitHubStatus();if(view==="chat")startSophia();}
 document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.view)));
 document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.go)));
 $("menuToggle").addEventListener("click",()=>$ ("sidebar").classList.toggle("open"));
@@ -306,6 +409,7 @@ function savePreferredName(value){visitorName=(value||"").trim();visitorNameChos
 function finishMessage(){busy=false;input.disabled=false;sendButton.disabled=false;input.focus();}
 async function startSophia(){if(ready||starting)return;starting=true;startButton.disabled=true;startButton.textContent="Starting Sophia…";setStatus("Starting Sophia and loading her Identity Core…");try{await loadIdentityCore();ready=true;setStatus("Sophia is awake. Her Identity Core is active. Remote intelligence will be used for conversations.");startButton.textContent="Sophia is ready";startButton.disabled=true;input.disabled=false;sendButton.disabled=false;input.placeholder="Write a message to Sophia…";input.focus();logActivity("Sophia started","Identity Core loaded successfully.");}catch(error){console.error("Sophia startup error:",error);setStatus("Sophia couldn't start: "+error.message);startButton.textContent="Try starting Sophia again";startButton.disabled=false;}finally{starting=false;}}
 startButton.addEventListener("click",startSophia);
+if(!(window.SpeechRecognition||window.webkitSpeechRecognition)){listenToggle.title="This browser may not support hands-free speech recognition. Chromebook dictation remains available.";}
 async function researchWikipedia(query){setStatus("Searching Wikipedia...");const searchUrl=new URL("https://en.wikipedia.org/w/api.php");Object.entries({action:"query",list:"search",srsearch:query,srlimit:"3",format:"json",origin:"*"}).forEach(([k,v])=>searchUrl.searchParams.set(k,v));const searchResponse=await fetch(searchUrl.toString());if(!searchResponse.ok)throw new Error("Wikipedia returned HTTP "+searchResponse.status);const searchData=await searchResponse.json();const results=searchData.query?.search||[];if(!results.length){addChatMessage("Sophia","I couldn't find any matching Wikipedia articles.","sophia");return;}const pageIds=results.map(x=>x.pageid).join("|");const articleUrl=new URL("https://en.wikipedia.org/w/api.php");Object.entries({action:"query",prop:"extracts",pageids:pageIds,exintro:"1",explaintext:"1",exsentences:"3",format:"json",origin:"*"}).forEach(([k,v])=>articleUrl.searchParams.set(k,v));const articleResponse=await fetch(articleUrl.toString());if(!articleResponse.ok)throw new Error("Wikipedia returned HTTP "+articleResponse.status);const articleData=await articleResponse.json();const pages=Object.values(articleData.query?.pages||[]);const pageMap=new Map(pages.map(p=>[p.pageid,p]));addChatMessage("Sophia","I've found these Wikipedia articles and their introductions:","sophia");results.forEach(result=>{const page=pageMap.get(result.pageid);if(!page)return;const card=document.createElement("div");card.className="bubble sophia";const heading=document.createElement("strong");heading.textContent=page.title+"\n";const extract=document.createElement("p");extract.textContent=page.extract||"No introduction was available.";const link=document.createElement("a");link.href="https://en.wikipedia.org/wiki/"+encodeURIComponent(page.title.replace(/ /g,"_"));link.textContent="Read the full Wikipedia article";link.target="_blank";link.rel="noopener noreferrer";link.style.color="var(--accent2)";card.append(heading,extract,link);conversation.append(card);});conversation.scrollTop=conversation.scrollHeight;logActivity("Wikipedia search",query);}
 async function sendMessage(){const message=input.value.trim();if(!message||!ready||busy)return;busy=true;input.value="";input.disabled=true;sendButton.disabled=true;if(!hasVisitorNameChoice()){const choice=message.toLowerCase();if(["skip","no","no thanks","rather not","prefer not","no name"].includes(choice)){savePreferredName("");addChatMessage("You",message,"keith");addChatMessage("Sophia","No problem at all. You can tell me a name later in Settings if you change your mind. What would you like to talk about?","sophia");input.placeholder="Write a message to Sophia…";logActivity("Visitor chose not to share a name");}else if(message.length>40){addChatMessage("Sophia","Please enter a name of 40 characters or fewer, or type skip if you prefer not to give one.","sophia");input.placeholder="Enter your name or type skip…";}else{savePreferredName(message);addChatMessage("You",message,"keith");addChatMessage("Sophia","It's lovely to meet you, "+message+". I look forward to getting to know you. What would you like to talk about?","sophia");input.placeholder="Write a message to Sophia…";logActivity("Visitor name saved",message);}setStatus("Sophia is ready.");finishMessage();return;}addChatMessage(getVisitorName()||"You",message,"keith");const command=message.toLowerCase().trim();if(command.startsWith("search:")){const query=message.slice(7).trim();try{if(!query)addChatMessage("Sophia","What would you like me to research?","sophia");else await researchWikipedia(query);}catch(error){console.error("Research error:",error);addChatMessage("Sophia","I couldn't complete the research. The technical reason was: "+error.message,"sophia");}setStatus("Sophia is ready.");finishMessage();return;}if(command.startsWith("remember:")){const memory=message.slice(9).trim();askToSaveMemory(memory);setStatus("Sophia is ready.");finishMessage();return;}const explicitMemory=suggestMemoryFromMessage(message);if(explicitMemory){askToSaveMemory(explicitMemory);setStatus("Sophia is ready.");finishMessage();return;}if(command==="memory"){const memories=loadMemories();addChatMessage("Sophia",memories.length?"Here is what I remember:\n"+memories.map((x,i)=>(i+1)+". "+x).join("\n"):"I haven't saved any memories yet.","sophia");setStatus("Sophia is ready.");finishMessage();return;}if(command.startsWith("forget:")){const target=message.slice(7).trim();const result=target?forgetMemory(target):"empty";addChatMessage("Sophia",result==="removed"?"I've removed that memory.":result==="not_found"?"I couldn't find that exact memory.":"Please tell me which memory you'd like me to forget.","sophia");if(result==="removed")logActivity("Memory removed",target.slice(0,90));renderMemories();setStatus("Sophia is ready.");finishMessage();return;}if(pendingMemoryCandidate){if(["yes","yes please","yes remember that","please remember that","save it","save that","remember it"].includes(command)){const memory=pendingMemoryCandidate;pendingMemoryCandidate=null;const result=saveMemory(memory);addChatMessage("Sophia",result==="saved"?"Of course. I've saved that in your personal memories: "+memory:result==="exists"?"I already have that saved in your memories.":result==="limit"?"Your memory list is full. Please remove an old memory before saving another.":result==="invalid"?"I can't save that memory. Please keep it brief and avoid sensitive personal information.":"I couldn't save that memory. Please try again.","sophia");if(result==="saved")logActivity("Memory saved",memory.slice(0,90));renderMemories();setStatus("Sophia is ready.");finishMessage();return;}if(["no","no thanks","no thank you","don't remember","do not remember","don't save it","do not save it","cancel"].includes(command)){pendingMemoryCandidate=null;addChatMessage("Sophia","No problem. I won't save it.","sophia");setStatus("Sophia is ready.");finishMessage();return;}pendingMemoryCandidate=null;}
 const replyBubble=addChatMessage("Sophia","Thinking…","sophia");setStatus("Sophia is contacting her remote intelligence...");let userMessageAdded=false;try{messages.push({role:"user",content:message});userMessageAdded=true;const memories=loadMemories().slice(-30);const memoryGraph=rebuildAssociativeMemoryGraph();const memoryConnections=memoryGraph.edges.slice(0,20).map(edge=>{const a=memoryGraph.nodes.find(node=>node.id===edge.from),b=memoryGraph.nodes.find(node=>node.id===edge.to);return a&&b?{first:a.text,second:b.text,shared:Array.isArray(edge.shared)?edge.shared.slice(0,8):[]}:null;}).filter(Boolean);const recentMessages=messages.slice(-6).map(item=>({role:item.role,content:item.content}));if(!turnstileToken)throw new Error("Please complete the security check before sending a message.");const response=await fetch(WORKER_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({messages:recentMessages,memories,memoryConnections,visitorName:getVisitorName(),turnstileToken})});let data;try{data=await response.json();}catch{throw new Error("The remote service returned an unreadable response (HTTP "+response.status+").");}if(!response.ok)throw new Error(data.error||"Remote service returned HTTP "+response.status);const replyText=[data.response,data.output_text,data.text].find(x=>typeof x==="string"&&x.trim());if(!replyText)throw new Error("The remote service returned an empty or unexpected response.");const rawReply=replyText.trim();const memoryMatch=rawReply.match(/\[\[SOPHIA_MEMORY:([\s\S]*?)\]\]/i);const reply=rawReply.replace(/\[\[SOPHIA_MEMORY:[\s\S]*?\]\]/gi,"").trim();replyBubble.textContent=reply;speakSophia(reply);messages.push({role:"assistant",content:reply});if(memoryMatch){const candidate=memoryMatch[1].trim();if(candidate.length>=12&&candidate.length<=1000&&!isSensitiveMemory(candidate)){askToSaveMemory(candidate);}}logActivity("Chat conversation",message.slice(0,100));setStatus("Sophia is ready.");}catch(error){console.error("Remote intelligence error:",error);if(userMessageAdded)messages.pop();replyBubble.textContent="I couldn't reach my remote intelligence service. "+error.message;setStatus("There was a problem contacting Sophia's remote intelligence.");}if(window.turnstile&&turnstileWidgetId!==null)window.turnstile.reset(turnstileWidgetId);turnstileToken=null;finishMessage();}
@@ -316,6 +420,7 @@ $("skipVisitorName").addEventListener("click",()=>{savePreferredName("");visitor
 $("homeSaveVisitorName").addEventListener("click",()=>{const field=$("homeVisitorNameInput"),name=field.value.trim();if(!name){$("homeVisitorNameStatus").textContent="Please enter a name, or choose Skip.";return;}if(name.length>40){$("homeVisitorNameStatus").textContent="Please use 40 characters or fewer.";return;}savePreferredName(name);if(visitorNameInput)visitorNameInput.value=name;$("visitorNameStatus").textContent="Sophia will call you "+name+" during this visit.";logActivity("Visitor name saved",name);});
 $("homeSkipVisitorName").addEventListener("click",()=>{savePreferredName("");if(visitorNameInput)visitorNameInput.value="";$("homeVisitorNameStatus").textContent="No problem. Sophia will greet you without a name.";$("visitorNameStatus").textContent="Sophia will greet you without using a name.";logActivity("Visitor chose not to use a name");});
 renderWelcome();
+window.addEventListener("pagehide",()=>{if(listeningActive)stopListening();});
 window.addEventListener("pageshow",event=>{if(event.persisted){visitorName="";visitorNameChosen=false;if(visitorNameInput)visitorNameInput.value="";renderWelcome();}});
 
 function refreshGitHubStatus(){const text=githubSession&&githubLogin?"Connected as "+githubLogin:"Not connected. Connect GitHub to read approved repository files.";$("homeGitHubStatus").textContent=text;}
