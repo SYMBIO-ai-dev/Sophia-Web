@@ -205,7 +205,9 @@ let speechEnabled=false;
 let preferredSpeechVoice=null;
 let speechRecognition=null;
 let listeningActive=false;
+let recognitionRunning=false;
 let recognitionRestartTimer=null;
+const isMobileDevice=()=>window.matchMedia?.("(pointer: coarse)").matches||/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 let currentSpokenReply="";
 const messages=[];
 
@@ -281,7 +283,17 @@ function stopListening(){
   if(speechRecognition){try{speechRecognition.stop();}catch{}}
   listenToggle.textContent="Start conversation";
   listenToggle.setAttribute("aria-pressed","false");
+  input.removeAttribute("inputmode");
   setListeningLabel("Listening is off");
+}
+function scheduleRecognitionRestart(){
+  if(!listeningActive||busy||!speechRecognition||recognitionRestartTimer)return;
+  recognitionRestartTimer=setTimeout(()=>{
+    recognitionRestartTimer=null;
+    if(!listeningActive||busy||!speechRecognition||recognitionRunning)return;
+    try{speechRecognition.start();}
+    catch(error){if(error.name!=="InvalidStateError")setListeningLabel("Microphone reconnecting…");}
+  },700);
 }
 function startListening(){
   const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -310,8 +322,11 @@ function startListening(){
       if(!transcript||looksLikeSophiaEcho(transcript))return;
       if(window.speechSynthesis&&window.speechSynthesis.speaking)stopSophiaSpeech();
       input.value=transcript;
+      if(isMobileDevice())input.blur();
+      if(speechRecognition){try{speechRecognition.stop();}catch{}}
       sendMessage();
     };
+    speechRecognition.onstart=()=>{recognitionRunning=true;};
     speechRecognition.onerror=event=>{
       if(!listeningActive)return;
       if(event.error==="not-allowed"||event.error==="service-not-allowed"){
@@ -322,13 +337,9 @@ function startListening(){
       }
     };
     speechRecognition.onend=()=>{
-      if(!listeningActive)return;
-      if(recognitionRestartTimer)clearTimeout(recognitionRestartTimer);
-      recognitionRestartTimer=setTimeout(()=>{
-        recognitionRestartTimer=null;
-        if(!listeningActive||!speechRecognition)return;
-        try{speechRecognition.start();}catch{}
-      },450);
+      recognitionRunning=false;
+      if(!listeningActive||busy)return;
+      scheduleRecognitionRestart();
     };
   }
   listeningActive=true;
@@ -338,6 +349,7 @@ function startListening(){
   voiceToggle.setAttribute("aria-pressed","true");
   listenToggle.textContent="Stop listening";
   listenToggle.setAttribute("aria-pressed","true");
+  if(isMobileDevice()){input.setAttribute("inputmode","none");input.blur();}
   setListeningLabel("Starting microphone…");
   try{speechRecognition.start();setListeningLabel("Listening — speak whenever you're ready");}
   catch(error){if(error.name==="InvalidStateError")setListeningLabel("Listening — speak whenever you're ready");else{stopListening();setListeningLabel("I couldn't start the microphone. Check Chrome's microphone permission and try again.");}}
@@ -405,8 +417,12 @@ function renderWelcome(){
   addChatMessage("Sophia",greeting,"sophia");
 }
 function savePreferredName(value){visitorName=(value||"").trim();visitorNameChosen=true;renderWelcome();}
-function finishMessage(){busy=false;input.disabled=false;sendButton.disabled=false;input.focus();}
-async function startSophia(){if(ready||starting)return;starting=true;startButton.disabled=true;startButton.textContent="Starting Sophia…";setStatus("Starting Sophia and loading her Identity Core…");try{await loadIdentityCore();ready=true;setStatus("Sophia is awake. Her Identity Core is active. Remote intelligence will be used for conversations.");startButton.textContent="Sophia is ready";startButton.disabled=true;input.disabled=false;sendButton.disabled=false;input.placeholder="Write a message to Sophia…";input.focus();logActivity("Sophia started","Identity Core loaded successfully.");}catch(error){console.error("Sophia startup error:",error);setStatus("Sophia couldn't start: "+error.message);startButton.textContent="Try starting Sophia again";startButton.disabled=false;}finally{starting=false;}}
+function finishMessage(){
+  busy=false;input.disabled=false;sendButton.disabled=false;
+  if(listeningActive){if(isMobileDevice())input.blur();scheduleRecognitionRestart();}
+  else if(!isMobileDevice())input.focus();
+}
+async function startSophia(){if(ready||starting)return;starting=true;startButton.disabled=true;startButton.textContent="Starting Sophia…";setStatus("Starting Sophia and loading her Identity Core…");try{await loadIdentityCore();ready=true;setStatus("Sophia is awake. Her Identity Core is active. Remote intelligence will be used for conversations.");startButton.textContent="Sophia is ready";startButton.disabled=true;input.disabled=false;sendButton.disabled=false;input.placeholder="Write a message to Sophia…";if(!isMobileDevice())input.focus();logActivity("Sophia started","Identity Core loaded successfully.");}catch(error){console.error("Sophia startup error:",error);setStatus("Sophia couldn't start: "+error.message);startButton.textContent="Try starting Sophia again";startButton.disabled=false;}finally{starting=false;}}
 startButton.addEventListener("click",startSophia);
 if(!(window.SpeechRecognition||window.webkitSpeechRecognition)){listenToggle.title="This browser may not support hands-free speech recognition. Chromebook dictation remains available.";}
 async function researchWikipedia(query){setStatus("Searching Wikipedia...");const searchUrl=new URL("https://en.wikipedia.org/w/api.php");Object.entries({action:"query",list:"search",srsearch:query,srlimit:"3",format:"json",origin:"*"}).forEach(([k,v])=>searchUrl.searchParams.set(k,v));const searchResponse=await fetch(searchUrl.toString());if(!searchResponse.ok)throw new Error("Wikipedia returned HTTP "+searchResponse.status);const searchData=await searchResponse.json();const results=searchData.query?.search||[];if(!results.length){addChatMessage("Sophia","I couldn't find any matching Wikipedia articles.","sophia");return;}const pageIds=results.map(x=>x.pageid).join("|");const articleUrl=new URL("https://en.wikipedia.org/w/api.php");Object.entries({action:"query",prop:"extracts",pageids:pageIds,exintro:"1",explaintext:"1",exsentences:"3",format:"json",origin:"*"}).forEach(([k,v])=>articleUrl.searchParams.set(k,v));const articleResponse=await fetch(articleUrl.toString());if(!articleResponse.ok)throw new Error("Wikipedia returned HTTP "+articleResponse.status);const articleData=await articleResponse.json();const pages=Object.values(articleData.query?.pages||[]);const pageMap=new Map(pages.map(p=>[p.pageid,p]));addChatMessage("Sophia","I've found these Wikipedia articles and their introductions:","sophia");results.forEach(result=>{const page=pageMap.get(result.pageid);if(!page)return;const card=document.createElement("div");card.className="bubble sophia";const heading=document.createElement("strong");heading.textContent=page.title+"\n";const extract=document.createElement("p");extract.textContent=page.extract||"No introduction was available.";const link=document.createElement("a");link.href="https://en.wikipedia.org/wiki/"+encodeURIComponent(page.title.replace(/ /g,"_"));link.textContent="Read the full Wikipedia article";link.target="_blank";link.rel="noopener noreferrer";link.style.color="var(--accent2)";card.append(heading,extract,link);conversation.append(card);});conversation.scrollTop=conversation.scrollHeight;logActivity("Wikipedia search",query);}
@@ -417,7 +433,7 @@ const visitorNameInput=$("visitorNameInput");if(visitorNameInput)visitorNameInpu
 $("saveVisitorName").addEventListener("click",()=>{const name=visitorNameInput.value.trim();if(!name){$("visitorNameStatus").textContent="Enter a name, or choose Use no name.";return;}if(name.length>40){$("visitorNameStatus").textContent="Please use 40 characters or fewer.";return;}savePreferredName(name);visitorNameInput.value=name;$("visitorNameStatus").textContent="Sophia will call you "+name+" during this visit.";const homeStatus=$("homeVisitorNameStatus");if(homeStatus)homeStatus.textContent="Welcome, "+name+".";logActivity("Visitor name updated",name);});
 $("skipVisitorName").addEventListener("click",()=>{savePreferredName("");visitorNameInput.value="";$("visitorNameStatus").textContent="Sophia will greet you without using a name.";logActivity("Visitor chose not to use a name");});
 $("homeSaveVisitorName").addEventListener("click",()=>{const field=$("homeVisitorNameInput"),name=field.value.trim();if(!name){$("homeVisitorNameStatus").textContent="Please enter a name, or choose Skip.";return;}if(name.length>40){$("homeVisitorNameStatus").textContent="Please use 40 characters or fewer.";return;}savePreferredName(name);if(visitorNameInput)visitorNameInput.value=name;$("visitorNameStatus").textContent="Sophia will call you "+name+" during this visit.";logActivity("Visitor name saved",name);});
-$("homeSkipVisitorName").addEventListener("click",()=>{savePreferredName("");if(visitorNameInput)visitorNameInput.value="";$("homeVisitorNameStatus").textContent="No problem. Sophia will greet you without a name.";$("visitorNameStatus").textContent="Sophia will greet you without using a name.";logActivity("Visitor chose not to use a name");navigate("chat");});
+$("homeSkipVisitorName").addEventListener("click",()=>{savePreferredName("");if(visitorNameInput)visitorNameInput.value="";$("homeVisitorNameStatus").textContent="No problem. Sophia will greet you without a name.";$("visitorNameStatus").textContent="Sophia will greet you without using a name.";logActivity("Visitor chose not to use a name");});
 renderWelcome();
 window.addEventListener("pagehide",()=>{if(listeningActive)stopListening();});
 window.addEventListener("pageshow",event=>{if(event.persisted){visitorName="";visitorNameChosen=false;if(visitorNameInput)visitorNameInput.value="";renderWelcome();}});
