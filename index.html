@@ -247,8 +247,8 @@ function speakSophia(text){
   preferredSpeechVoice=chooseSpeechVoice()||preferredSpeechVoice;
   if(preferredSpeechVoice)utterance.voice=preferredSpeechVoice;
   utterance.lang=preferredSpeechVoice?.lang||"en-US";
-  utterance.rate=0.96;
-  utterance.pitch=1.12;
+  utterance.rate=1.0;
+  utterance.pitch=1.10;
   utterance.volume=1;
   utterance.onstart=()=>{if(listeningActive)setListeningLabel("Listening — you can interrupt me");};
   utterance.onend=()=>{setTimeout(()=>{if(currentSpokenReply===clean)currentSpokenReply="";},2200);if(listeningActive)setListeningLabel("Listening — speak whenever you're ready");};
