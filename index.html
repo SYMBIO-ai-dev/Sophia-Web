@@ -217,26 +217,25 @@ function availableSpeechVoices(){
 function chooseSpeechVoice(){
   const voices=availableSpeechVoices();
   if(!voices.length)return null;
-  const score=voice=>{
-    const lang=(voice.lang||"").toLowerCase();
-    const name=(voice.name||"").toLowerCase();
-    let points=0;
-    // Strongly prefer voices explicitly identified as British English.
-    if(lang==="en-gb")points+=100;
-    else if(lang.startsWith("en-gb"))points+=95;
-    else if(/united kingdom|british|\buk\b/.test(name))points+=80;
-    // If no British voice exists, prefer another UK-adjacent English accent
-    // rather than silently choosing an American voice.
-    else if(lang.startsWith("en-ie"))points+=45;
-    else if(lang.startsWith("en-au"))points+=40;
-    else if(lang.startsWith("en-nz"))points+=35;
-    else if(lang.startsWith("en"))points+=10;
-    if(/sonia|serena|libby|hazel|susan|kate|female|woman/.test(name))points+=3;
-    if(/natural|neural|google|microsoft/.test(name))points+=4;
-    if(/united states|\bus\b|american/.test(name)||lang.startsWith("en-us"))points-=15;
-    return points;
-  };
-  return voices.slice().sort((a,b)=>score(b)-score(a))[0]||null;
+
+  // Respect Keith's previously selected Chromebook voice first.
+  const preferred=voices.find(voice=>/chrome os us english 8/i.test(voice.name||""));
+  if(preferred)return preferred;
+
+  // Otherwise use the Chromebook's US English default, never an Indian
+  // English voice selected merely because it was labelled as female.
+  const usDefault=voices.find(voice=>voice.default&&/^en-us(?:-|$)/i.test(voice.lang||""));
+  if(usDefault)return usDefault;
+  const usEnglish=voices.find(voice=>/^en-us(?:-|$)/i.test(voice.lang||""));
+  if(usEnglish)return usEnglish;
+
+  // Last-resort English fallbacks, while explicitly avoiding en-IN.
+  const ukDefault=voices.find(voice=>voice.default&&/^en-gb(?:-|$)/i.test(voice.lang||""));
+  if(ukDefault)return ukDefault;
+  const ukEnglish=voices.find(voice=>/^en-gb(?:-|$)/i.test(voice.lang||""));
+  if(ukEnglish)return ukEnglish;
+  const otherEnglish=voices.find(voice=>/^en(?:-|$)/i.test(voice.lang||"")&&!/^en-in(?:-|$)/i.test(voice.lang||""));
+  return otherEnglish||null;
 }
 function speakSophia(text){
   if(!speechEnabled||!("speechSynthesis" in window)||!text)return;
@@ -247,7 +246,7 @@ function speakSophia(text){
   const utterance=new SpeechSynthesisUtterance(clean);
   preferredSpeechVoice=chooseSpeechVoice()||preferredSpeechVoice;
   if(preferredSpeechVoice)utterance.voice=preferredSpeechVoice;
-  utterance.lang=preferredSpeechVoice?.lang||"en-GB";
+  utterance.lang=preferredSpeechVoice?.lang||"en-US";
   utterance.rate=0.88;
   utterance.pitch=1.12;
   utterance.volume=1;
