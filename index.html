@@ -482,7 +482,7 @@ function renderChatContent(element, text) {
 
     element.appendChild(document.createTextNode(text.slice(lastIndex)));
 }
-    function addChatMessage(name,text,kind){const div=document.createElement("div");div.className="bubble "+kind;div.textContent=text;div.setAttribute("aria-label",name+" says");conversation.appendChild(div);conversation.scrollTop=conversation.scrollHeight;if(kind==="sophia"&&text!=="Thinking…")speakSophia(text);return div;}
+    function addChatMessage(name,text,kind){const div=document.createElement("div");div.className="bubble "+kind;div.textConrenderChatContent(div,text);tent=text;div.setAttribute("aria-label",name+" says");conversation.appendChild(div);conversation.scrollTop=conversation.scrollHeight;if(kind==="sophia"&&text!=="Thinking…")speakSophia(text);return div;}
 function getVisitorName(){return visitorName;}
 function hasVisitorNameChoice(){return visitorNameChosen;}
 function renderWelcome(){
