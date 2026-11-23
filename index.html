@@ -5,7 +5,45 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#101827">
 <title>Sophia 2.0</title>
-<style>
+.code-block {
+    margin: 12px 0;
+    border: 1px solid #777;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #1e1e1e;
+    color: #f1f1f1;
+}
+
+.code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #333;
+    font-size: 12px;
+}
+
+.code-block-copy {
+    padding: 5px 12px;
+    border: 1px solid #888;
+    border-radius: 5px;
+    background: #555;
+    color: white;
+    cursor: pointer;
+}
+
+.code-block pre {
+    margin: 0;
+    padding: 14px;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.code-block code {
+    font-family: monospace;
+    font-size: 13px;
+}
+  <style>
 :root{color-scheme:dark;--bg:#0d1523;--panel:#162338;--panel2:#1c2c44;--panel3:#223650;--line:#30445f;--text:#edf3fc;--muted:#a9bad0;--accent:#9bbcff;--accent2:#c3d9ff;--good:#9cdbb2;--warn:#f0d39a;--danger:#f2aaaa;--shadow:0 18px 55px #0005}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 80% 0%,#203451 0%,transparent 38%),var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer}button:disabled,input:disabled{opacity:.55;cursor:not-allowed}.app{min-height:100vh;display:grid;grid-template-columns:260px minmax(0,1fr)}
 .sidebar{position:sticky;top:0;height:100vh;padding:22px 15px;background:#101b2cdd;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:20px;z-index:20;backdrop-filter:blur(18px)}.brand{display:flex;align-items:center;gap:12px;padding:5px 9px 18px;border-bottom:1px solid var(--line)}.brand-mark{width:43px;height:43px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(145deg,#3c5e8b,#253a59);color:#d9e8ff;font-size:23px;box-shadow:0 8px 24px #0004}.brand strong{display:block;letter-spacing:.16em;font-size:15px}.brand small{display:block;color:var(--muted);margin-top:4px;font-size:11px}.nav-label{padding:0 11px;color:#8297b3;text-transform:uppercase;font-size:10px;letter-spacing:.14em}.nav{display:grid;gap:5px}.nav button{display:flex;align-items:center;gap:12px;width:100%;padding:11px 12px;border:1px solid transparent;border-radius:11px;background:transparent;color:#c1cee0;text-align:left;font-size:13px;transition:.18s}.nav button:hover{background:#1b2c43;color:white}.nav button.active{background:linear-gradient(100deg,#2a4263,#20344f);border-color:#49658a;color:#fff;box-shadow:inset 3px 0 #a8c8ff}.nav-icon{width:20px;text-align:center;font-size:16px}.sidebar-bottom{margin-top:auto;display:grid;gap:10px}.connection{padding:12px;border:1px solid var(--line);background:#15243a;border-radius:12px;color:var(--muted);font-size:11px;line-height:1.5}.connection strong{color:var(--good);font-weight:600}.sidebar-footer{padding:0 9px;color:#7186a3;font-size:10px}
