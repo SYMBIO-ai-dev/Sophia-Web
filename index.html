@@ -438,7 +438,51 @@ function renderMemoryConnections(){const graph=rebuildAssociativeMemoryGraph(),h
 
 $("refreshMemories").onclick=renderMemories;$("addMemory").onclick=()=>{const value=$("newMemory").value.trim();if(!value){$("memoryStatus").textContent="Please enter a memory first.";return;}const result=saveMemory(value);$("memoryStatus").textContent=result==="saved"?"Memory saved in this browser.":result==="exists"?"That memory is already saved.":"The memory could not be saved.";if(result==="saved"){logActivity("Memory saved",value.slice(0,90));$("newMemory").value="";}renderMemories();};
 
-function addChatMessage(name,text,kind){const div=document.createElement("div");div.className="bubble "+kind;div.textContent=text;div.setAttribute("aria-label",name+" says");conversation.appendChild(div);conversation.scrollTop=conversation.scrollHeight;if(kind==="sophia"&&text!=="Thinking…")speakSophia(text);return div;}
+function renderChatContent(element, text) {
+    const pattern = /```([a-zA-Z0-9_+-]*)[ \t]*\n([\s\S]*?)```/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = pattern.exec(text)) !== null) {
+        element.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+
+        const block = document.createElement("div");
+        block.className = "code-block";
+
+        const header = document.createElement("div");
+        header.className = "code-block-header";
+
+        const language = document.createElement("span");
+        language.textContent = match[1] || "Code";
+
+        const copy = document.createElement("button");
+        copy.className = "code-block-copy";
+        copy.textContent = "Copy";
+        copy.onclick = async () => {
+            try {
+                await navigator.clipboard.writeText(match[2]);
+                copy.textContent = "Copied!";
+                setTimeout(() => copy.textContent = "Copy", 1500);
+            } catch {
+                copy.textContent = "Copy failed";
+            }
+        };
+
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        code.textContent = match[2];
+
+        header.append(language, copy);
+        pre.appendChild(code);
+        block.append(header, pre);
+        element.appendChild(block);
+
+        lastIndex = pattern.lastIndex;
+    }
+
+    element.appendChild(document.createTextNode(text.slice(lastIndex)));
+}
+    function addChatMessage(name,text,kind){const div=document.createElement("div");div.className="bubble "+kind;div.textContent=text;div.setAttribute("aria-label",name+" says");conversation.appendChild(div);conversation.scrollTop=conversation.scrollHeight;if(kind==="sophia"&&text!=="Thinking…")speakSophia(text);return div;}
 function getVisitorName(){return visitorName;}
 function hasVisitorNameChoice(){return visitorNameChosen;}
 function renderWelcome(){
