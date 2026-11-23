@@ -446,6 +446,7 @@ function renderChatContent(element, text) {
     while ((match = pattern.exec(text)) !== null) {
         element.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
 
+        const codeText = match[2];
         const block = document.createElement("div");
         block.className = "code-block";
 
