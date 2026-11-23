@@ -396,15 +396,7 @@ function startListening(){
   input.removeAttribute("inputmode");
   setListeningLabel("Listening is off");
 }
-function scheduleRecognitionRestart(){
-  if(!listeningActive||busy||!speechRecognition||recognitionRestartTimer)return;
-  recognitionRestartTimer=setTimeout(()=>{
-    recognitionRestartTimer=null;
-    if(!listeningActive||busy||!speechRecognition||recognitionRunning)return;
-    try{speechRecognition.start();}
-    catch(error){if(error.name!=="InvalidStateError")setListeningLabel("Microphone reconnecting…");}
-  },700);
-}
+
 function startListening(){
   const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!Recognition){
