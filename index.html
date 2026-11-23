@@ -810,7 +810,10 @@ let sophiaSelectedFile = null;
 
       updateStatus(
         "Read " + name +
-        (content.length > 12000 ? " (preview shortened)" : ""),
+        (content.length > 12000 ? " (preview shortened)" : "") +
+        (content.length > MAX_CONTEXT_CHARS
+          ? " — only the first " + MAX_CONTEXT_CHARS.toLocaleString() + " characters will be sent to Sophia."
+          : ""),
         true
       );
     } catch (error) {
@@ -908,7 +911,9 @@ let sophiaSelectedFile = null;
     }
 
     updateStatus(
-      "File attached to your next chat message. Press Send when you're ready.",
+      hasVisitorNameChoice()
+        ? "File ready. Press Send when you're ready; its contents will be included in that message."
+        : "File ready. First complete Sophia's welcome name choice (or type skip), then send your question about the file.",
       true
     );
   });
