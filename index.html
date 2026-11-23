@@ -461,7 +461,7 @@ function renderChatContent(element, text) {
         copy.textContent = "Copy";
         copy.onclick = async () => {
             try {
-                await navigator.clipboard.writeText(match[2]);
+                await navigator.clipboard.writeText(codeText
                 copy.textContent = "Copied!";
                 setTimeout(() => copy.textContent = "Copy", 1500);
             } catch {
@@ -471,7 +471,7 @@ function renderChatContent(element, text) {
 
         const pre = document.createElement("pre");
         const code = document.createElement("code");
-        code.textContent = match[2];
+        code.textContent = codeText
 
         header.append(language, copy);
         pre.appendChild(code);
