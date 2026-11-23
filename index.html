@@ -397,25 +397,7 @@ function startListening(){
   setListeningLabel("Listening is off");
 }
 
-function startListening(){
-  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!Recognition){
-    setListeningLabel("This browser does not support hands-free speech recognition. You can still use Chromebook dictation.");
-    return;
-  }
-  if(!ready){setListeningLabel("Start Sophia before turning on listening.");return;}
-  if(!speechRecognition){
-    speechRecognition=new Recognition();
-    speechRecognition.continuous=true;
-    speechRecognition.interimResults=true;
-    speechRecognition.lang="en-GB";
-    speechRecognition.onresult=event=>{
-      if(!listeningActive||busy)return;
-      let transcript="",interim="";
-      for(let i=event.resultIndex;i<event.results.length;i++){
-        if(event.results[i].isFinal)transcript+=event.results[i][0].transcript+" ";
-        else interim+=event.results[i][0].transcript+" ";
-      }
+
       interim=interim.trim();
       transcript=transcript.trim();
       // Stop Sophia as soon as the browser recognises words that do not sound
