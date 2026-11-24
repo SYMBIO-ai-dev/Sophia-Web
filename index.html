@@ -147,6 +147,7 @@
     <div class="eyebrow">Personal memory</div><h1>Memory centre</h1><p>These memories are stored in this browser. You can add, edit or remove them here at any time. Sophia may also notice something useful during a conversation and suggest saving it. She will always ask first.</p>
     <div class="panel"><div class="panel-header"><div><h2>Saved memories</h2><div class="muted" id="memoryCount">0 memories</div></div><button class="soft-button" id="refreshMemories">Refresh</button></div><div class="list" id="memoryList"></div></div>
     <div class="panel"><h2>Memory connections</h2><p class="small">Sophia looks for meaningful words shared between memories and records those links, helping her bring related information together.</p><div class="muted" id="memoryConnectionCount">No connections yet</div><div class="list" id="memoryConnections"></div></div>
+    <div class="panel"><h2>Memory backup</h2><p class="small">Export your memories and connections to a private JSON file. Import a backup to restore memories in this browser. Connections are rebuilt automatically. Keep backups somewhere safe.</p><div class="inline-actions"><button class="soft-button" id="exportMemoryBackup">Export Memory</button><button class="soft-button" id="importMemoryBackup">Import Memory</button></div><input type="file" id="memoryBackupFile" accept=".json,application/json" hidden><div class="status-line" id="memoryBackupStatus" role="status"></div></div>
     <div class="panel"><h2>Add a memory</h2><p class="small">You can still add a memory here yourself. In chat, Sophia can prepare a memory from an explicit “remember…” request, but it is only saved after you reply yes.</p><div class="field"><label for="newMemory">What should Sophia remember?</label><textarea id="newMemory" placeholder="Write a useful fact or preference…"></textarea></div><button class="primary-button" id="addMemory">Save memory</button><div class="status-line" id="memoryStatus"></div><p class="small">Avoid saving passwords, financial details or other highly sensitive information.</p></div>
   </section>
 
@@ -436,6 +437,30 @@ function renderMemories(){const host=$("memoryList");host.replaceChildren();cons
 
 function renderMemoryConnections(){const graph=rebuildAssociativeMemoryGraph(),host=$("memoryConnections");host.replaceChildren();$("memoryConnectionCount").textContent=graph.edges.length+" connection"+(graph.edges.length===1?"":"s")+" across "+graph.nodes.length+" memories";if(!graph.edges.length){host.innerHTML='<div class="empty">No strong connections found yet. As you add more memories, Sophia will look for shared topics.</div>';return;}graph.edges.forEach(edge=>{const first=graph.nodes.find(node=>node.id===edge.from),second=graph.nodes.find(node=>node.id===edge.to);if(!first||!second)return;const item=document.createElement("div");item.className="list-item";const a=document.createElement("p");a.textContent=first.text;const link=document.createElement("p");link.className="small";link.textContent="↕ Connected through: "+edge.shared.join(", ");const b=document.createElement("p");b.textContent=second.text;item.append(a,link,b);host.append(item);});}
 
+function downloadMemoryBackup(){
+  const memories=loadMemories();
+  const graph=rebuildAssociativeMemoryGraph();
+  const backup={format:"sophia-memory-backup",version:1,exportedAt:new Date().toISOString(),memories,graph};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)],{type:"application/json"}));
+  const link=document.createElement("a");link.href=url;link.download="sophia-memory-backup-"+new Date().toISOString().slice(0,10)+".json";
+  document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  $("memoryBackupStatus").textContent="Backup download requested ("+memories.length+" memories).";
+}
+$("exportMemoryBackup").onclick=downloadMemoryBackup;
+$("importMemoryBackup").onclick=()=>$("memoryBackupFile").click();
+$("memoryBackupFile").onchange=async(event)=>{
+  const file=event.target.files[0];event.target.value="";if(!file)return;
+  const status=$("memoryBackupStatus");
+  try{
+    if(file.size>20*1024*1024)throw new Error("Backup file is too large.");
+    const data=JSON.parse(await file.text());
+    const memories=Array.isArray(data)?data:(data&&data.format==="sophia-memory-backup"&&data.version===1?data.memories:null);
+    if(!Array.isArray(memories)||memories.length>100||memories.some(m=>typeof m!=="string"||!m.trim()||m.length>1000||isSensitiveMemory(m)))throw new Error("Invalid backup or memories exceed the current memory rules. Nothing was imported.");
+    if(!confirm("Replace the "+loadMemories().length+" current saved memories with "+memories.length+" memories from this file? Export your current memories first if you need a backup.")){status.textContent="Import cancelled.";return;}
+    localStorage.setItem(MEMORY_KEY,JSON.stringify(memories));
+    renderMemories();status.textContent="Restored "+memories.length+" memories and rebuilt their connections.";
+  }catch(error){status.textContent="Import could not be completed: "+error.message;}
+};
 $("refreshMemories").onclick=renderMemories;$("addMemory").onclick=()=>{const value=$("newMemory").value.trim();if(!value){$("memoryStatus").textContent="Please enter a memory first.";return;}const result=saveMemory(value);$("memoryStatus").textContent=result==="saved"?"Memory saved in this browser.":result==="exists"?"That memory is already saved.":"The memory could not be saved.";if(result==="saved"){logActivity("Memory saved",value.slice(0,90));$("newMemory").value="";}renderMemories();};
 
 function renderChatContent(element, text) {
