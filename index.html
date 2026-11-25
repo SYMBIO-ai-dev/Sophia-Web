@@ -104,6 +104,7 @@
     <button data-view="memory"><span class="nav-icon">◈</span>Memory centre</button>
     <button data-view="abilities"><span class="nav-icon">✧</span>Abilities & tools</button>
     <button data-view="projects"><span class="nav-icon">▤</span>Projects</button>
+    <button data-view="development"><span class="nav-icon">⌑</span>Development journal</button>
     <button data-view="learning"><span class="nav-icon">⌑</span>Learning journal</button>
     <button data-view="ideas"><span class="nav-icon">✦</span>Ideas workshop</button>
     <button data-view="activity"><span class="nav-icon">◷</span>Activity & progress</button>
@@ -147,7 +148,7 @@
     <div class="eyebrow">Personal memory</div><h1>Memory centre</h1><p>These memories are stored in this browser. You can add, edit or remove them here at any time. Sophia may also notice something useful during a conversation and suggest saving it. She will always ask first.</p>
     <div class="panel"><div class="panel-header"><div><h2>Saved memories</h2><div class="muted" id="memoryCount">0 memories</div></div><button class="soft-button" id="refreshMemories">Refresh</button></div><div class="list" id="memoryList"></div></div>
     <div class="panel"><h2>Memory connections</h2><p class="small">Sophia looks for meaningful words shared between memories and records those links, helping her bring related information together.</p><div class="muted" id="memoryConnectionCount">No connections yet</div><div class="list" id="memoryConnections"></div></div>
-    <div class="panel"><h2>Memory backup</h2><p class="small">Export your memories and connections to a private JSON file. Import a backup to restore memories in this browser. Connections are rebuilt automatically. Keep backups somewhere safe.</p><div class="inline-actions"><button class="soft-button" id="exportMemoryBackup">Export Memory</button><button class="soft-button" id="importMemoryBackup">Import Memory</button></div><input type="file" id="memoryBackupFile" accept=".json,application/json" hidden><div class="status-line" id="memoryBackupStatus" role="status"></div></div>
+    <div class="panel"><h2>Memory backup</h2><p class="small">Export your memories and connections to a private JSON file. Import a backup to add its memories to this browser, or choose to replace the current list. Connections are rebuilt automatically. Keep backups somewhere safe.</p><div class="inline-actions"><button class="soft-button" id="exportMemoryBackup">Export Memory</button><button class="soft-button" id="importMemoryBackup">Import Memory</button></div><input type="file" id="memoryBackupFile" accept=".json,application/json" hidden><div class="field"><label for="memoryImportMode">Memory import mode</label><select id="memoryImportMode"><option value="merge">Add new memories</option><option value="replace">Replace all saved memories</option></select></div><div class="status-line" id="memoryBackupStatus" role="status"></div></div>
     <div class="panel"><h2>Add a memory</h2><p class="small">You can still add a memory here yourself. In chat, Sophia can prepare a memory from an explicit “remember…” request, but it is only saved after you reply yes.</p><div class="field"><label for="newMemory">What should Sophia remember?</label><textarea id="newMemory" placeholder="Write a useful fact or preference…"></textarea></div><button class="primary-button" id="addMemory">Save memory</button><div class="status-line" id="memoryStatus"></div><p class="small">Avoid saving passwords, financial details or other highly sensitive information.</p></div>
   </section>
 
@@ -184,6 +185,32 @@
     <div class="eyebrow">Knowledge & notes</div><h1>Learning journal</h1><p>A simple notebook for discoveries, useful explanations and things you want to revisit. Entries are saved in this browser.</p>
     <div class="panel"><h2>New journal entry</h2><div class="field"><label for="journalTitle">Title</label><input id="journalTitle" placeholder="What did we discover?"></div><div class="field"><label for="journalBody">Notes</label><textarea id="journalBody" placeholder="Write a discovery, explanation or question to return to…"></textarea></div><button class="primary-button" id="saveJournal">Save entry</button><div class="status-line" id="journalStatus"></div></div>
     <div class="panel"><div class="panel-header"><h2>Your journal</h2><span class="badge" id="journalCount">0 entries</span></div><div class="list" id="journalList"></div></div>
+  </section>
+
+  <section class="view" id="view-development">
+    <h1>Development journal</h1>
+    <p>Record changes, test results and decisions about Sophia. Entries stay in this browser until you export them.</p>
+    <div class="panel">
+      <form id="developmentForm">
+        <div class="field"><label for="developmentTitle">Title</label><input id="developmentTitle" maxlength="160" required></div>
+        <div class="field"><label for="developmentKind">Entry type</label><select id="developmentKind"><option>Proposal</option><option>Decision</option><option>Test result</option><option>Release</option></select></div>
+        <div class="field"><label for="developmentNotes">Notes</label><textarea id="developmentNotes" maxlength="8000" required></textarea></div>
+        <button class="primary-button" type="submit">Save development entry</button>
+      </form>
+      <div class="status-line" id="developmentStatus" role="status"></div>
+    </div>
+    <div class="panel">
+      <h2>Saved entries</h2>
+      <div class="list" id="developmentList"></div>
+    </div>
+    <div class="panel">
+      <h2>Journal backup</h2>
+      <button class="soft-button" type="button" id="developmentExport">Export journal</button>
+      <button class="soft-button" type="button" id="developmentImport">Import and merge journal</button>
+      <input type="file" id="developmentFile" accept=".json,application/json" hidden>
+      <p class="small">Keep exported files private. You can import the same file on another device.</p>
+      <div class="status-line" id="developmentBackupStatus" role="status"></div>
+    </div>
   </section>
 
   <section class="view" id="view-ideas">
@@ -414,7 +441,7 @@ function readArray(key){try{const value=JSON.parse(localStorage.getItem(key)||"[
 function writeArray(key,value){localStorage.setItem(key,JSON.stringify(value));}
 function logActivity(title,detail=""){const items=readArray(KEYS.activity);items.unshift({title,detail,time:new Date().toISOString()});writeArray(KEYS.activity,items.slice(0,60));renderActivity();}
 function setStatus(message){if(status)status.textContent=message;$ ("sideStatus").textContent=ready?"Ready":"Waiting to start";$ ("sideStatusDetail").textContent=message;$("homeAIStatus").textContent=ready?"Sophia is started and ready for a conversation.":"Not started yet. Start Sophia from the chat page.";$("chatSubstatus").textContent=message;$("chatReadyBadge").textContent=ready?"Ready":"Not started";}
-function navigate(view){if(view!=="chat"&&listeningActive)stopListening();document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id==="view-"+view));document.querySelectorAll(".nav button[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));const names={home:"Home",chat:"Chat with Sophia",memory:"Memory centre",abilities:"Abilities & tools",projects:"Projects",learning:"Learning journal",ideas:"Ideas workshop",activity:"Activity & progress",permissions:"Permissions & control",settings:"Settings"};$("breadcrumb").textContent="Your space / "+(names[view]||"Home");$("sidebar").classList.remove("open");if(view==="memory")renderMemories();if(view==="learning")renderJournal();if(view==="ideas")renderIdeas();if(view==="activity")renderActivity();if(view==="projects")refreshGitHubStatus();if(view==="chat")startSophia();}
+function navigate(view){if(view!=="chat"&&listeningActive)stopListening();document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.id==="view-"+view));document.querySelectorAll(".nav button[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));const names={home:"Home",chat:"Chat with Sophia",memory:"Memory centre",abilities:"Abilities & tools",projects:"Projects",learning:"Learning journal",development:"Development journal",ideas:"Ideas workshop",activity:"Activity & progress",permissions:"Permissions & control",settings:"Settings"};$("breadcrumb").textContent="Your space / "+(names[view]||"Home");$("sidebar").classList.remove("open");if(view==="memory")renderMemories();if(view==="learning")renderJournal();if(view==="development")renderDevelopmentJournal();if(view==="ideas")renderIdeas();if(view==="activity")renderActivity();if(view==="projects")refreshGitHubStatus();if(view==="chat")startSophia();}
 document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.view)));
 document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.go)));
 $("menuToggle").addEventListener("click",()=>$ ("sidebar").classList.toggle("open"));
@@ -456,6 +483,24 @@ $("memoryBackupFile").onchange=async(event)=>{
     const data=JSON.parse(await file.text());
     const memories=Array.isArray(data)?data:(data&&data.format==="sophia-memory-backup"&&data.version===1?data.memories:null);
     if(!Array.isArray(memories)||memories.length>100||memories.some(m=>typeof m!=="string"||!m.trim()||m.length>1000||isSensitiveMemory(m)))throw new Error("Invalid backup or memories exceed the current memory rules. Nothing was imported.");
+    const current = loadMemories();
+    const existing = new Set(current.map(memory => memory.toLowerCase()));
+    const additions = [];
+    for (const memory of memories) {
+      const clean = memory.trim();
+      const key = clean.toLowerCase();
+      if (existing.has(key)) continue;
+      existing.add(key);
+      additions.push(clean);
+    }
+    const mode = $("memoryImportMode").value;
+    if (mode === "merge") {
+      if (current.length + additions.length > 100) throw new Error("This merge would exceed the 100-memory limit.");
+      if (additions.length) localStorage.setItem(MEMORY_KEY, JSON.stringify([...current, ...additions]));
+      renderMemories();
+      status.textContent = "Added " + additions.length + " new memories.";
+      return;
+    }
     if(!confirm("Replace the "+loadMemories().length+" current saved memories with "+memories.length+" memories from this file? Export your current memories first if you need a backup.")){status.textContent="Import cancelled.";return;}
     localStorage.setItem(MEMORY_KEY,JSON.stringify(memories));
     renderMemories();status.textContent="Restored "+memories.length+" memories and rebuilt their connections.";
@@ -1101,5 +1146,6 @@ let sophiaSelectedFile = null;
 })();
 
 </script>
+<script src="./development-journal.js"></script>
 </body>
 </html>
