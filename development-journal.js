@@ -106,7 +106,7 @@ const developmentJournal = (() => {
       const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: "application/json" }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = "sophia-development-journal-" + new Date().toISOString().slice(0, 10) + ".json";
+      link.download = "jopey-development-journal-" + new Date().toISOString().slice(0, 10) + ".json";
       document.body.append(link);
       link.click();
       link.remove();
@@ -125,7 +125,7 @@ const developmentJournal = (() => {
     try {
       if (file.size > maxBackupBytes) throw new Error("Backup file is too large.");
       const backup = JSON.parse(await file.text());
-      if (backup?.format !== format || backup.version !== 1) throw new Error("Choose a Sophia development journal backup.");
+      if (backup?.format !== format || backup.version !== 1) throw new Error("Choose a JOPEY or Sophia development journal backup.");
       const incoming = validate(backup.entries);
       const current = read();
       const known = new Map(current.map(entry => [entry.id, entry]));
